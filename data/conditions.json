@@ -1,0 +1,21 @@
+{
+  "about": "eBay's item conditions the AI may pick from, per category, with eBay's own condition IDs. Refurbished grades are left out: they need eBay's approval first.",
+  "phones": [
+    {"id": "1000", "label": "New"},
+    {"id": "1500", "label": "Opened - never used"},
+    {"id": "3000", "label": "Used"},
+    {"id": "7000", "label": "For parts or not working"}
+  ],
+  "consoles": [
+    {"id": "1000", "label": "New"},
+    {"id": "1500", "label": "Opened - never used"},
+    {"id": "3000", "label": "Used"},
+    {"id": "7000", "label": "For parts or not working"}
+  ],
+  "headphones": [
+    {"id": "1000", "label": "New"},
+    {"id": "1500", "label": "Opened - never used"},
+    {"id": "3000", "label": "Used"},
+    {"id": "7000", "label": "For parts or not working"}
+  ]
+}
