@@ -1,0 +1,12 @@
+# the Python environment box: rebuilt from requirements.txt, never uploaded
+.venv/
+__pycache__/
+.pytest_cache/
+
+# your real items: other sellers' listing text and your photos stay on this Mac
+testset/private/
+
+# API keys live here
+.env
+
+.DS_Store
