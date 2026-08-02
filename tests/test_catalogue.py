@@ -19,6 +19,7 @@ def test_words_split_letters_from_numbers():
     assert words("S23+") == ["s", "23", "plus"]
     assert words("phone + case") == ["phone", "case"]
     assert words("Pokémon") == ["pokemon"]
+    assert words("it's 23 months, Sony’s box") == ["it", "23", "months", "sony", "box"]  # 's dropped
 
 
 @pytest.mark.parametrize("title, expected", [
@@ -169,6 +170,10 @@ def test_your_notes_can_overrule_the_title():
     ("iPhone 14 can be unlocked", None),
     ("iPhone 14 128GB sim, free postage", None),
     ("iCloud locked iPhone 14 unlocked", None),
+    ("iPhone 14 isn’t unlocked", None),            # the curly apostrophe iPhones type
+    ("iPhone 14 never been unlocked", None),
+    ("iPhone 14 hasn't been unlocked", None),
+    ("iPhone 14 has been unlocked", "Unlocked"),
 ])
 def test_network(title, network):
     assert fill(title)["network"] == network
@@ -187,3 +192,20 @@ def test_unknown_model_needs_you():
 def test_missing_notes_dont_crash():
     assert fill("random phone", None)["model_id"] is None
     assert fill(None, "iphone 13")["model_id"] == "iphone-13"
+
+
+# each of these used to give a confident wrong answer (found by the second check)
+def test_its_is_not_a_galaxy_s23():
+    assert model_id("phone, it's 23 months old") is None
+
+
+def test_colour_of_a_case_with_describing_words_doesnt_count():
+    assert fill("iPhone 13 128GB pink silicone case")["colour"] is None
+    assert fill("iPhone 13 128GB with clear protective blue case")["colour"] is None
+    assert fill("iPhone 13 Pink with case")["colour"] == "Pink"          # "with" ends the description
+    assert fill("iPhone 15 Pro, original white cable")["colour"] is None  # the cable is white
+
+
+def test_an_option_that_isnt_there_doesnt_count():
+    assert fill("original 2020 PS5 digital, no disc drive")["options"] == {"Edition": "Digital Edition"}
+    assert fill("AirPods Pro 2 with USB-C cable")["options"] == {"Connector": None}

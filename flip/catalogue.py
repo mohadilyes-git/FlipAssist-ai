@@ -22,9 +22,18 @@ ACCESSORY_AFTER = {"case", "cases", "cover", "covers", "controller", "controller
                    "camera", "box", "strap", "mount", "holder", "grip", "grips", "stylus"}
 # a colour right before one of these is describing something else: "blue CASE", "pink LINE"
 NOT_ITEM_COLOUR = {"case", "cases", "cover", "bumper", "skin", "strap", "line", "lines", "spot",
-                   "spots", "tint", "mark", "marks", "screen", "display", "light"}
-# an option word right before one of these is about something else: "disc GAMES"
-NOT_AN_OPTION = {"game", "games", "code", "codes", "film", "films", "movie", "movies", "copy", "copies"}
+                   "spots", "tint", "mark", "marks", "screen", "display", "light", "cable", "cables",
+                   "charger", "lead", "box", "controller", "controllers", "pad", "pads", "dock", "stand",
+                   "sleeve", "pouch", "bag"}
+# words that can sit between a colour and what it describes: "pink SILICONE case"
+DESCRIBING_WORDS = {"silicone", "leather", "clear", "protective", "phone", "rubber", "magsafe", "plastic",
+                    "hard", "soft", "glitter", "wallet", "flip", "official", "apple", "genuine", "original",
+                    "matching", "carry", "carrying", "travel", "usb", "c"}
+# an option word right before one of these is about something else: "disc GAMES", "USB-C CABLE"
+NOT_AN_OPTION = {"game", "games", "code", "codes", "film", "films", "movie", "movies", "copy", "copies",
+                 "cable", "cables", "lead", "leads", "charger", "chargers", "adapter", "adaptor", "plug", "wire"}
+# an option word just after one of these isn't there: "NO disc drive"
+NOT_THERE = {"no", "not", "without", "non"}
 COMMON_COLOURS = {"black", "white", "grey", "gray", "silver", "gold", "blue", "red", "pink", "green",
                   "purple", "yellow", "orange", "midnight", "starlight", "graphite", "cream", "lavender"}
 # worth a warning: the listing may be locked or faulty
@@ -33,11 +42,11 @@ FAULT_WORDS = ["icloud", "activation lock", "blacklisted", "barred", "for parts"
 
 
 def load_catalogue():
-    return json.loads((DATA / "catalogue.json").read_text())["models"]
+    return json.loads((DATA / "catalogue.json").read_text(encoding="utf-8"))["models"]
 
 
 def load_conditions():
-    data = json.loads((DATA / "conditions.json").read_text())
+    data = json.loads((DATA / "conditions.json").read_text(encoding="utf-8"))
     del data["about"]
     return data
 
@@ -48,10 +57,12 @@ def words(text):
     "iPhone13 128GB" -> ["iphone", "13", "128", "gb"], so "iphone13",
     "iPhone 13" and "IPHONE-13" all look the same. Accents are dropped
     ("Pokémon" -> "pokemon"). A "+" stuck to a name ("S23+") becomes "plus";
-    a "+" on its own ("phone + case") is dropped.
+    a "+" on its own ("phone + case") is dropped. "'s" is dropped, so
+    "it's 23 months" can't read as an S23.
     """
     text = unicodedata.normalize("NFKD", text.lower())
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"(?<=[a-z0-9])['’ʼ]s\b", "", text)
     text = re.sub(r"(?<=[a-z0-9])\+", " plus ", text)
     return re.findall(r"[a-z]+|\d+", text)
 
@@ -66,14 +77,23 @@ def contains(text_words, phrase_words):
     return bool(find_phrase(text_words, phrase_words))
 
 
-def mentioned(text_words, phrase, not_followed_by=()):
-    """True if phrase appears and isn't describing something else, i.e. isn't
-    directly followed by one of not_followed_by ("blue" in "blue case")."""
+def mentioned(text_words, phrase, not_followed_by=(), skipping=(), not_after=()):
+    """True if phrase appears at least once in a way that counts:
+    - it isn't describing something else: the next word isn't one of
+      not_followed_by ("blue CASE"), even with up to 3 skipping words in
+      between ("pink silicone CASE");
+    - it isn't ruled out by one of the 2 words before it ("NO disc drive")."""
     phrase_words = words(phrase)
     for start in find_phrase(text_words, phrase_words):
         end = start + len(phrase_words)
-        if end >= len(text_words) or text_words[end] not in not_followed_by:
-            return True
+        skipped = 0
+        while end < len(text_words) and text_words[end] in skipping and skipped < 3:
+            end, skipped = end + 1, skipped + 1
+        if end < len(text_words) and text_words[end] in not_followed_by:
+            continue
+        if set(text_words[max(0, start - 2):start]) & set(not_after):
+            continue
+        return True
     return False
 
 
@@ -133,35 +153,51 @@ def find_storage(text_words, model):
     return real.pop() if len(real) == 1 else None
 
 
+def item_colour_mentioned(text_words, name):
+    """True if the text uses this colour name for the item itself, not for a
+    case, cable or mark ("blue case", "pink silicone case", "pink line")."""
+    return mentioned(text_words, name, NOT_ITEM_COLOUR, DESCRIBING_WORDS)
+
+
+def colours_named(text_words, model):
+    """The model's colours the text names, by full or short name."""
+    aliases = model.get("colour_aliases", {})
+    return {colour for colour in model["colours"]
+            if any(item_colour_mentioned(text_words, name) for name in [colour, *aliases.get(colour, [])])}
+
+
 def find_colour(text_words, model):
     """The colour, if the model only comes in one or the text names exactly one."""
     allowed = model["colours"]
-    aliases = model.get("colour_aliases", {})
     if len(allowed) == 1:
         # only one colour exists. If the text names another, leave it for you
         own = set(words(allowed[0]))
-        others = [c for c in COMMON_COLOURS - own if mentioned(text_words, c, NOT_ITEM_COLOUR)]
+        others = [c for c in COMMON_COLOURS - own if item_colour_mentioned(text_words, c)]
         return None if others else allowed[0]
-    named = [colour for colour in allowed
-             if any(mentioned(text_words, name, NOT_ITEM_COLOUR) for name in [colour, *aliases.get(colour, [])])]
-    return named[0] if len(named) == 1 else None
+    named = colours_named(text_words, model)
+    return named.pop() if len(named) == 1 else None
+
+
+def options_named(text_words, model):
+    """For each option (Edition, Connector), every value the text names."""
+    return {name: {value for value, keywords in values.items()
+                   if any(mentioned(text_words, k, NOT_AN_OPTION, not_after=NOT_THERE) for k in keywords)}
+            for name, values in model["options"].items()}
 
 
 def find_options(text_words, model):
     """Each option (Disc/Digital, Lightning/USB-C) the text clearly names."""
-    picked = {}
-    for name, values in model["options"].items():
-        named = [value for value, keywords in values.items()
-                 if any(mentioned(text_words, k, NOT_AN_OPTION) for k in keywords)]
-        picked[name] = named[0] if len(named) == 1 else None
-    return picked
+    return {name: next(iter(named)) if len(named) == 1 else None
+            for name, named in options_named(text_words, model).items()}
 
 
 def find_network(text):
-    """'Unlocked' only when the text plainly says so. "Not unlocked", "can be
-    unlocked", a lock or iCloud anywhere: that's for you to check."""
-    text = text.lower()
-    if re.search(r"\b(not|isn'?t|be|cannot|can'?t|could)\s+(be\s+)?unlocked\b", text):
+    """'Unlocked' only when the text plainly says so. "Not unlocked", "never been
+    unlocked", "can be unlocked", a lock or iCloud anywhere: that's for you to
+    check. Curly apostrophes (iPhone keyboards type "isn’t") count as straight."""
+    text = re.sub(r"[’‘ʼ]", "'", text.lower())
+    if re.search(r"\b(?:not|never|isn'?t|hasn'?t|wasn'?t|cannot|can'?t|could|be)\s+(?:been\s+|be\s+)?unlocked\b",
+                 text):
         return None
     if re.search(r"\b(locked|icloud|blacklisted|barred)\b", text):
         return None

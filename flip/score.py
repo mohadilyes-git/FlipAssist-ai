@@ -40,7 +40,7 @@ def score(items, catalogue):
 
 def main():
     path = Path(sys.argv[1] if len(sys.argv) > 1 else "testset/private/items.json")
-    items = json.loads(path.read_text())
+    items = json.loads(path.read_text(encoding="utf-8"))
     totals, wrong = score(items, load_catalogue())
     print(f"{len(items)} items from {path}\n")
     print(f"{'field':<10} {'right':>6} {'left for you':>13} {'wrong':>6}")
