@@ -1,0 +1,46 @@
+[
+  {
+    "id": "example-1",
+    "note": "MADE-UP EXAMPLE showing the format. Copy this file to testset/private/items.json and replace these with your real items.",
+    "category": "phones",
+    "original_title": "iphone 13 128gb unlocked boxed",
+    "original_description": "Selling my iPhone 13, works perfectly, always had a case on. Comes with box.",
+    "my_notes": "boxed, battery 87%, light scratch on the back, screen perfect, no charger",
+    "photos": ["photos/example-1-front.jpg", "photos/example-1-back.jpg"],
+    "asking_price": "220.00",
+    "paid": "180.00",
+    "answer": {
+      "model_id": "iphone-13",
+      "storage": "128GB",
+      "colour": "Midnight",
+      "network": "Unlocked",
+      "options": {},
+      "condition_id": "3000"
+    },
+    "my_listing": {
+      "title": "Apple iPhone 13 128GB Midnight Unlocked Boxed",
+      "description": "iPhone 13 in Midnight, 128GB, unlocked to all networks. Battery health 87%. Light scratch on the back, screen perfect. Boxed, no charger.",
+      "minutes_it_took": 12
+    }
+  },
+  {
+    "id": "example-2",
+    "note": "MADE-UP EXAMPLE",
+    "category": "consoles",
+    "original_title": "PS5 disc edition + 2 pads",
+    "original_description": "Barely used, selling as I don't play anymore.",
+    "my_notes": "disc edition, 2 controllers, all cables, no box",
+    "photos": ["photos/example-2.jpg"],
+    "asking_price": "300",
+    "paid": "250",
+    "answer": {
+      "model_id": "ps5",
+      "storage": "825GB",
+      "colour": "White",
+      "network": null,
+      "options": {"Edition": "Disc Edition"},
+      "condition_id": "3000"
+    },
+    "my_listing": null
+  }
+]
