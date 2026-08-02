@@ -106,7 +106,7 @@ def test_one_possible_value_is_filled_without_reading():
     assert item["colour"] == "White"
     assert item["options"] == {"Connector": "USB-C"}
     assert item["missing"] == []
-    assert fill("PS5 disc")["storage"] == "825GB"
+    assert fill("PS5 disc, original 2020 model")["storage"] == "825GB"
 
 
 def test_one_possible_value_is_not_filled_when_the_text_disagrees():
@@ -122,13 +122,13 @@ def test_ps5_slim_comes_in_two_sizes():
 
 
 def test_two_options_named_means_unsure():
-    item = fill("PS5 disc console, digital edition box")
+    item = fill("original PS5 disc console, digital edition box")
     assert item["options"] == {"Edition": None}
     assert "Edition" in item["missing"]
 
 
 def test_disc_games_are_not_the_disc_edition():
-    assert fill("PS5 digital with 3 disc games")["options"] == {"Edition": "Digital Edition"}
+    assert fill("original PS5 digital with 3 disc games")["options"] == {"Edition": "Digital Edition"}
 
 
 def test_two_colours_named_means_unsure():
@@ -209,3 +209,26 @@ def test_colour_of_a_case_with_describing_words_doesnt_count():
 def test_an_option_that_isnt_there_doesnt_count():
     assert fill("original 2020 PS5 digital, no disc drive")["options"] == {"Edition": "Digital Edition"}
     assert fill("AirPods Pro 2 with USB-C cable")["options"] == {"Connector": None}
+
+
+def test_ps5_on_its_own_could_be_the_slim():
+    # Sony sells the Slim as "PS5 Disc Edition" too, so a bare "PS5" goes to you
+    item = fill("PS5 Disc Edition 825GB")
+    assert item["model_id"] is None
+    assert "original 2020 model" in item["warnings"][0]
+    assert fill("PS5 Digital Edition Marvel's Wolverine Battle Yellow 825GB")["model_id"] is None
+    assert fill("PS5 disc edition", "original 2020 model")["model_id"] == "ps5"
+
+
+def test_your_notes_can_name_the_exact_model():
+    assert fill("PS5 disc edition", "it's the PS5 Slim")["model_id"] == "ps5-slim"
+    assert fill("iPhone 13 Pro 128GB", "iphone 13, good condition")["model_id"] == "iphone-13-pro"
+
+
+def test_an_edition_that_only_comes_one_way_is_filled():
+    item = fill("PS5 Slim Wolverine edition")
+    assert (item["colour"], item["storage"], item["options"]) == \
+        ("Marvel's Wolverine Battle Yellow", "825GB", {"Edition": "Digital Edition"})
+    item = fill("PS5 Slim Wolverine disc edition")
+    assert item["options"] == {"Edition": None}
+    assert item["warnings"] == ["the Marvel's Wolverine Battle Yellow only comes as Digital Edition: check the edition"]

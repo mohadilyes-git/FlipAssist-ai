@@ -206,6 +206,22 @@ def find_network(text):
     return None
 
 
+def family_of(general, specific):
+    """True if one of general's names starts one of specific's: "PS5" is the
+    family name of the "PS5 Slim", "iPhone 13" of the "iPhone 13 Pro"."""
+    return any(words(long)[:len(words(short))] == words(short)
+               for short in general["aliases"] for long in specific["aliases"])
+
+
+def edition_value(found, only, edition, what, warnings):
+    """An edition that only comes one way: fill that value, or leave it for you
+    if the text says something else."""
+    if found in (None, only):
+        return only
+    warnings.append(f"the {edition} only comes as {only}: check the {what}")
+    return None
+
+
 def warnings_for(text_words):
     found = [phrase for phrase in FAULT_WORDS if contains(text_words, words(phrase))]
     return [f"mentions {', '.join(found)}: check the condition before listing"] if found else []
@@ -217,7 +233,10 @@ def fill_from_catalogue(title, notes, catalogue):
 
     The model comes from the title, or your notes if the title doesn't say. If
     the two name different models, or your notes rule the model out ("it's the
-    pro"), it's left for you. Everything else is read from both together.
+    pro"), it's left for you; a family name and an exact one ("PS5" and "PS5
+    Slim") count as the exact one. A name that fits two models needs a word that
+    settles it ("PS5" alone could be the Slim). Everything else is read from
+    both together.
     """
     title, notes = title or "", notes or ""
     text = f"{title} {notes}"
@@ -228,9 +247,18 @@ def fill_from_catalogue(title, notes, catalogue):
     from_notes = find_model(notes, catalogue)
     model = from_title or from_notes
     if from_title and from_notes and from_title is not from_notes:
-        model = None
-        warnings.append("the title and your notes name different models")
+        if family_of(from_title, from_notes):
+            model = from_notes  # "PS5" in the title, "PS5 Slim" in your notes: the Slim
+        elif family_of(from_notes, from_title):
+            model = from_title
+        else:
+            model = None
+            warnings.append("the title and your notes name different models")
     if model and any(word in text_words for word in model["not_if"]):
+        model = None
+    if model and model.get("confirm_with") and \
+            not any(contains(text_words, words(phrase)) for phrase in model["confirm_with"]):
+        warnings.append(model["confirm_why"])  # "PS5" alone could be the Slim
         model = None
     if model is None:
         return {"model_id": None, "missing": ["model"], "warnings": warnings}
@@ -246,6 +274,13 @@ def fill_from_catalogue(title, notes, catalogue):
         "network": find_network(text) if model["category"] == "phones" else None,
         "specs": dict(model["specs"]),
     }
+    # some editions only come one way: the Wolverine PS5 is Digital Edition, 825GB
+    rule = model.get("colour_rules", {}).get(filled["colour"])
+    if rule:
+        filled["storage"] = edition_value(filled["storage"], rule["storage"], filled["colour"], "storage", warnings)
+        for name, value in rule["options"].items():
+            filled["options"][name] = edition_value(filled["options"][name], value, filled["colour"],
+                                                    name.lower(), warnings)
     missing = []
     if model["storage"] and filled["storage"] is None:
         missing.append("storage")

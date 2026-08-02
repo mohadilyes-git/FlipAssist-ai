@@ -1,5 +1,5 @@
 {
-  "about": "Facts code fills in, so the AI never has to guess them. aliases = ways people write the name; not_if = words that mean it is a different model; storage/colours/options = the only values that exist (special editions count as colours); colour_aliases = shorter ways people write a colour; specs = facts that never change for the model. Checked against Apple, Samsung, PlayStation and Nintendo pages on 28 Oct 2026.",
+  "about": "Facts code fills in, so the AI never has to guess them. aliases = ways people write the name; not_if = words that mean it is a different model; storage/colours/options = the only values that exist (special editions count as colours); colour_aliases = shorter ways people write a colour; colour_rules = editions that only come one way; confirm_with = words one of which must also appear, because the plain name fits another model too (confirm_why says what to add); specs = facts that never change for the model. Checked against Apple, Samsung, PlayStation and Nintendo pages on 28 Oct 2026.",
   "models": [
     {
       "id": "iphone-13",
@@ -86,6 +86,10 @@
       "model": "PlayStation 5",
       "aliases": ["ps 5", "playstation 5", "play station 5"],
       "not_if": ["slim", "pro", "portal", "tb", "cfi", "vr"],
+      "confirm_with": ["original model", "original version", "original console", "original ps 5",
+                       "original playstation 5", "launch model", "launch edition", "launch console",
+                       "fat", "first gen", "1st gen", "2020", "2021", "2022"],
+      "confirm_why": "'PS5' alone could be the 2020 console or the Slim (Sony sells both as 'PS5 Disc Edition' and 'Digital Edition'): add 'original 2020 model' or 'PS5 Slim' to your notes",
       "storage": ["825GB"],
       "colours": ["White", "Marvel's Spider-Man 2 Limited Edition"],
       "colour_aliases": {},
@@ -101,7 +105,9 @@
       "not_if": ["pro", "portal", "vr"],
       "storage": ["825GB", "1TB"],
       "colours": ["White", "30th Anniversary", "Ghost of Yōtei Gold", "Ghost of Yōtei Black", "Marvel's Wolverine Battle Yellow"],
-      "colour_aliases": {},
+      "colour_aliases": {"Ghost of Yōtei Gold": ["yotei gold"], "Ghost of Yōtei Black": ["yotei black"],
+                         "Marvel's Wolverine Battle Yellow": ["wolverine"]},
+      "colour_rules": {"Marvel's Wolverine Battle Yellow": {"storage": "825GB", "options": {"Edition": "Digital Edition"}}},
       "options": {"Edition": {"Disc Edition": ["disc", "disk", "standard"], "Digital Edition": ["digital"]}},
       "specs": {"Release Year": "2023"}
     },
