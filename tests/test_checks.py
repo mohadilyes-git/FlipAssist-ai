@@ -140,6 +140,9 @@ def test_claims_your_notes_make_pass():
     "whatsapp me",
     "insta @example_seller",
     "IMEI 123456789012345",
+    "call O7700 900123",                                     # a letter O for the zero
+    "Snap: example_seller",
+    "find me on IG",
 ])
 def test_contact_details_fail(text):
     assert "description contains a link, email, phone number, handle or long ID number" in problems(description=text)
@@ -297,3 +300,9 @@ def test_wrong_price_fails(message):
 def test_message_with_a_phone_number_fails():
     assert "message contains a link, email, phone number, handle or long ID number" in \
         check_message("£170? text me on 07700900123", 17000, LISTING)
+
+
+def test_the_asking_price_cant_hide_a_second_offer():
+    message = "It's listed at £200, but would you take £170 or £200?"
+    assert "the message must offer exactly £170.00 and no other price" in \
+        check_message(message, 17000, LISTING, asking=20000)

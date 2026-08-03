@@ -113,7 +113,9 @@ LINK = re.compile(r"https?://|www\.|\b[\w-]+\.(?:com|co\.uk|uk|net|org|io)\b", r
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.\w+")
 HANDLE = re.compile(r"(?<![\w.])@\w{3,}")
 CONTACT_WORDS = re.compile(r"\b(?:whats ?app|instagram|insta|snapchat|telegram|gmail|hotmail|outlook|yahoo)\b"
-                           r"|\bdot (?:com|co|uk|net)\b", re.IGNORECASE)
+                           r"|\bdot (?:com|co|uk|net)\b"
+                           r"|\b(?:snap|sc|ig|fb|tiktok|discord|kik)\s*(?::|@|me\b)"  # "Snap: name"
+                           r"|\bon (?:snap|ig|fb|tiktok|discord|kik)\b", re.IGNORECASE)  # "find me on IG"
 # checked with the spaces, dashes and brackets between digits removed
 PHONE = re.compile(r"(?:\+|00)44\d{9,11}|\b0[1-37]\d{8,9}\b")  # UK mobiles and landlines
 LONG_NUMBER = re.compile(r"\b\d{10,}\b")  # 10+ digits in a row: a phone number or an IMEI
@@ -200,6 +202,7 @@ def says_new(notes):
 
 
 def contact_details_in(text):
+    text = re.sub(r"(?<=\d)[oO]|[oO](?=\d)", "0", text)  # a letter O typed for a zero: "O7700 900123"
     joined = re.sub(r"(?<=\d)[\s().\-]+(?=\d)", "", text)  # "07700 900-123" -> "07700900123"
     return any(pattern.search(text) for pattern in (LINK, EMAIL, HANDLE, CONTACT_WORDS)) or \
         any(pattern.search(joined) for pattern in (PHONE, LONG_NUMBER))
@@ -399,16 +402,18 @@ def check_listing_answer(answer, item, catalogue, conditions, sources, notes):
 def check_message(message, offer, sources, asking=None):
     """Every check on a drafted message to a seller. offer and asking are in pence.
 
-    The only price it may state is the offer (the asking price only as "listed
-    at £200"). No claim check: a message asks things ("does it come with the box?").
+    The only price it may state is the offer. The asking price may come up
+    only as "listed at £200", and that's taken out before the prices are read,
+    so a second "£200" can't hide behind it. No claim check: a message asks
+    things ("does it come with the box?").
     """
     problems = check_length("message", message, MAX_MESSAGE)
     if problems:
         return problems
-    mentions = {to_pence(amount) for amount in ASKING_MENTION.findall(message)}
-    prices = {to_pence(amount) for pattern in PRICES for amount in pattern.findall(message)}
-    if asking is not None and asking in mentions:
-        prices.discard(asking)
+    rest = message
+    if asking is not None and all(to_pence(amount) == asking for amount in ASKING_MENTION.findall(message)):
+        rest = ASKING_MENTION.sub(" ", message)
+    prices = {to_pence(amount) for pattern in PRICES for amount in pattern.findall(rest)}
     if prices != {offer}:
         problems.append(f"the message must offer exactly {pounds(offer)} and no other price")
     problems += check_no_invented_numbers("message", message, f"{sources} {pounds(offer)}")
