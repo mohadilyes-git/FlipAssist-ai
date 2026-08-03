@@ -159,6 +159,64 @@ def test_numbers_written_differently_are_the_same():
     assert numbers_in("£1,200.00 and 6.10 inch, two cables") == {"1200", "6.1", "2"}
 
 
+# ── found by the second check: your notes beat the seller's words ──────────
+
+def test_your_notes_beat_the_sellers_words():
+    # the seller's text says boxed (it's in SOURCES), your notes say no box
+    notes = "no box, battery 87%, light scratch on the back"
+    assert problems(notes=notes, description="Boxed iPhone 13.") == \
+        ["description says things your inputs don't: box"]
+
+
+def test_a_percentage_must_come_from_your_notes():
+    sources = SOURCES + " battery health 90%"  # the seller said 90%, you measured 87%
+    assert problems(sources=sources, description="iPhone 13, battery health 90%.") == \
+        ["description has a percentage your notes don't: 90%"]
+
+
+def test_a_new_part_doesnt_make_the_item_new():
+    notes = "new battery fitted, light scratch on the back"
+    assert problems(notes=notes, condition_id="1000", condition_note="", description="iPhone 13.") == \
+        ["condition is New or Opened, but your notes don't say it's new or unused"]
+    assert problems(notes="opened but never used", condition_id="1500", condition_note="",
+                    description="iPhone 13.") == []
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("Box: no, charger - none", {"box": {"no"}, "charger": {"no"}}),
+    ("charger not included", {"charger": {"no"}}),
+    ("charger isn't included", {"charger": {"no"}}),
+    ("original box missing", {"box": {"no"}}),
+    ("can't find the box", {"box": {"no"}}),
+    ("dent-free", {"marks": {"no"}}),
+    ("free from scratches", {"marks": {"no"}}),
+    ("fully working, no faults", {"working": {"yes"}}),
+    ("faulty speaker", {"working": {"no"}}),
+    ("comes with dock and Joy-Cons", {"dock": {"yes"}, "controller": {"yes"}}),
+    ("all accessories included", {"accessories": {"yes"}}),
+    ("games console", {}),
+    ("excellent noise cancelling", {}),
+    ("screen perfect", {"flawless screen": {"yes"}}),
+    ("new battery fitted", {"battery": {"yes"}}),
+])
+def test_reading_claims(text, expected):
+    assert promises_in(text) == expected
+
+
+def test_working_claims_need_your_notes():
+    # a draft saying Face ID works, when your notes never said so
+    assert problems(description="iPhone 13, Face ID works.") == \
+        ["description says things about the condition your notes don't: working"]
+    assert problems(notes=NOTES + ", fully working", description="iPhone 13, Face ID works.") == []
+
+
+def test_nothing_is_flawless_when_your_notes_mention_a_mark():
+    notes = "screen perfect, light scratch on the back, battery 87%"
+    assert problems(notes=notes, description="Flawless iPhone 13.") == \
+        ["description says things about the condition your notes don't: flawless"]
+    assert problems(notes=notes, description="iPhone 13, screen perfect.") == []
+
+
 # ── messages ────────────────────────────────────────────────────────────────
 
 LISTING = "PS5 disc edition, 2 controllers, £200"

@@ -232,3 +232,8 @@ def test_an_edition_that_only_comes_one_way_is_filled():
     item = fill("PS5 Slim Wolverine disc edition")
     assert item["options"] == {"Edition": None}
     assert item["warnings"] == ["the Marvel's Wolverine Battle Yellow only comes as Digital Edition: check the edition"]
+
+
+def test_the_sellers_description_can_raise_a_warning():
+    item = fill_from_catalogue("iPhone 13 128GB", "", CATALOGUE, description="Face ID doesn't work")
+    assert item["warnings"] == ["mentions doesn't work: check the condition before listing"]

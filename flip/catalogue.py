@@ -38,7 +38,7 @@ COMMON_COLOURS = {"black", "white", "grey", "gray", "silver", "gold", "blue", "r
                   "purple", "yellow", "orange", "midnight", "starlight", "graphite", "cream", "lavender"}
 # worth a warning: the listing may be locked or faulty
 FAULT_WORDS = ["icloud", "activation lock", "blacklisted", "barred", "for parts", "spares",
-               "faulty", "not working", "broken"]
+               "faulty", "not working", "doesn't work", "won't turn on", "water damage", "broken"]
 
 
 def load_catalogue():
@@ -227,7 +227,7 @@ def warnings_for(text_words):
     return [f"mentions {', '.join(found)}: check the condition before listing"] if found else []
 
 
-def fill_from_catalogue(title, notes, catalogue):
+def fill_from_catalogue(title, notes, catalogue, description=""):
     """Everything code can fill for one item, plus what it couldn't ("missing")
     and anything you should look at ("warnings").
 
@@ -236,12 +236,13 @@ def fill_from_catalogue(title, notes, catalogue):
     pro"), it's left for you; a family name and an exact one ("PS5" and "PS5
     Slim") count as the exact one. A name that fits two models needs a word that
     settles it ("PS5" alone could be the Slim). Everything else is read from
-    both together.
+    both together. The seller's description is read for warnings only
+    ("faulty", "iCloud"): it's too chatty to fill facts from.
     """
     title, notes = title or "", notes or ""
     text = f"{title} {notes}"
     text_words = words(text)
-    warnings = warnings_for(text_words)
+    warnings = warnings_for(words(f"{text} {description or ''}"))
 
     from_title = find_model(title, catalogue)
     from_notes = find_model(notes, catalogue)

@@ -19,15 +19,21 @@ MAX_MESSAGE = 500
 NEW_CONDITIONS = {"1000", "1500"}  # New, Opened - never used: eBay ignores a condition note on these
 
 # things a draft must not mention unless your inputs (title, description,
-# notes, catalogue) do too. Each line is one thing; any of its words counts
+# notes, catalogue) do too. Each line is one thing; any of its words counts.
+# If your notes mention it, only your notes count: your "no box" beats the
+# seller's "boxed"
 PROMISES = {
     "box": ["box", "boxed", "packaging"],
     "charger": ["charger", "adapter", "adaptor"],
     "cable": ["cable", "lead", "cord"],
     "case": ["case"],
     "controller": ["controller", "dualsense"],
+    "dock": ["dock"],
     "game": ["game"],
     "screen protector": ["protector"],
+    "accessories": ["accessory", "extras"],
+    "ear tips": ["tips", "eartips"],
+    "manual": ["manual", "instructions", "paperwork"],
     "receipt": ["receipt", "invoice"],
     "warranty": ["warranty", "guarantee", "guaranteed", "applecare"],
     "unlocked": ["unlocked", "simfree"],
@@ -38,19 +44,54 @@ CONDITION_PROMISES = {
     "new": ["new", "bnib", "unused", "unopened"],
     "sealed": ["sealed"],
     "battery": ["battery"],
+    "working": ["working", "works", "functional", "functioning"],
     "flawless": ["mint", "flawless", "perfect", "perfectly", "pristine", "immaculate", "spotless", "excellent"],
     "marks": ["scratch", "scuff", "mark", "dent", "crack", "cracked", "chip", "chipped"],
 }
 KEYWORDS = {word: promise for promise, keywords in {**PROMISES, **CONDITION_PROMISES}.items() for word in keywords}
-# phrases rewritten before reading claims: same meaning, one way of writing it
-SAME_AS = {"sim free": "simfree", "apple care": "applecare", "proof of purchase": "receipt",
-           "like new": "mint", "joy con": "controller", "scratch free": "no scratch",
-           "mark free": "no mark"}
+# phrases rewritten before reading claims: same meaning, one way of writing it.
+# Applied in this order, so longer phrases go first
+SAME_AS = [
+    ("perfect working order", "working"), ("full working order", "working"), ("good working order", "working"),
+    ("works perfectly", "works"), ("working perfectly", "working"), ("perfectly working", "working"),
+    ("fully working", "working"), ("fully functional", "working"),
+    ("no faults", "working"), ("no fault", "working"), ("no issues", "working"), ("no problems", "working"),
+    ("doesn t work", "not working"), ("does not work", "not working"), ("won t turn on", "not working"),
+    ("faulty", "not working"),
+    ("never used", "unused"), ("never opened", "unopened"),
+    ("sim free", "simfree"), ("apple care", "applecare"), ("proof of purchase", "receipt"),
+    ("like new", "mint"), ("as new", "mint"),
+    ("joy cons", "controllers"), ("joy con", "controller"), ("joycons", "controllers"), ("joycon", "controller"),
+    ("scratch free", "no scratch"), ("mark free", "no mark"), ("dent free", "no dent"),
+    ("scuff free", "no scuff"), ("crack free", "no crack"), ("free from", "no"), ("free of", "no"),
+]
 # phrases that contain a claim word but aren't a claim
-HARMLESS = ["perfect for", "perfect gift", "new owner", "new home", "since new", "from new"]
+HARMLESS = ["perfect for", "perfect gift", "new owner", "new home", "since new", "from new",
+            "works with", "working with", "compatible with", "games console", "games consoles", "game console"]
 # a claim word with one of these shortly before it, in the same part of the
-# sentence, is a "no": "no box", "doesn't come with a charger"
-NEGATIONS = {"no", "not", "without", "missing", "never", "none", "nor", "isn", "doesn", "don", "hasn", "wasn"}
+# sentence, is a "no": "no box", "doesn't come with a charger", "can't find the box"
+NEGATIONS = {"no", "not", "without", "missing", "never", "none", "nor", "isn", "doesn", "don", "hasn", "wasn",
+             "lost", "t"}
+# ...and so is one of these shortly after it: "charger MISSING", "box LOST"
+NEGATED_AFTER = {"missing", "lost", "none", "excluded"}
+# ...or "not" and one of these: "charger NOT INCLUDED"
+INCLUDED = {"included", "supplied", "provided", "present"}
+# "new" right before one of these is about a part, not the item: "new battery fitted"
+PARTS = {"battery", "screen", "display", "glass", "back", "housing", "camera", "lens", "port", "speaker",
+         "speakers", "case", "charger", "cable", "strap", "pads", "cushions", "tips", "box", "protector",
+         "controller", "controllers", "dock", "stand", "fan", "ssd", "drive", "seal", "seals", "sim",
+         "firmware", "software", "update", "buttons", "button", "sound", "headband"}
+# a condition word next to one of these is about that part only: "screen perfect"
+CONDITION_PARTS = {"screen", "display", "glass", "back", "housing", "camera", "lens", "speaker", "speakers",
+                   "sound", "buttons", "battery", "case", "box", "controller", "controllers", "pads",
+                   "cushions", "headband"}
+# a condition word right before one of these describes the model, not this
+# one: "excellent noise cancelling"
+FEATURES = {"noise", "cancelling", "canceling", "anc", "bass", "graphics", "performance", "value"}
+# your notes must say one of these for the item to be New or Opened - never used
+NEW_ITEM = re.compile(r"\b(?:brand new|bnib|bnwt|new in box|new sealed|still sealed|factory sealed|sealed|"
+                      r"unopened|never opened|unused|never used)\b")
+PERCENT = re.compile(r"(\d+(?:\.\d+)?)\s?(?:%|per ?cent\b)", re.IGNORECASE)
 
 NUMBER = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?")
 # number words count as numbers. Not "one": "this one", "one of the best"
@@ -100,25 +141,58 @@ def promises_in(text):
     """Each claim the text makes, and whether it says yes or no to it.
 
     "Boxed, no charger" -> {"box": {"yes"}, "charger": {"no"}}
+    "box: no", "charger not included" and "free from scratches" are all a no.
+    A condition word next to a part is about that part only: "screen perfect"
+    -> {"flawless screen": {"yes"}}, not a flawless item.
     """
     found = {}
+    text = text.lower()
+    # "box: no", "charger - none" -> "no box", "no charger"; "box: yes" -> "box"
+    text = re.sub(r"\b([a-z]+(?: [a-z]+)?)\s*[:=\-–—]\s*(?:no|none|nope|missing|not included)\s*(?=[,.;\n]|$)",
+                  r"no \1", text)
+    text = re.sub(r"\b([a-z]+(?: [a-z]+)?)\s*[:=\-–—]\s*(?:yes|yep|included)\s*(?=[,.;\n]|$)", r"\1", text)
     # read one part of a sentence at a time, so "no scratches, comes with box"
     # or "no scratches and comes with box" doesn't turn into "no box"
-    for part in re.split(r"[,.;:!?\n()]|\bbut\b|\band\b(?= (?:comes|has|includes|with))", text.lower()):
+    for part in re.split(r"[,.;:!?\n()]|\bbut\b|\band\b(?= (?:comes|has|includes|included|with|is|boxed))", text):
         part = " " + " ".join(words(part)) + " "
-        for phrase, same in SAME_AS.items():
+        for phrase, same in SAME_AS:
             part = part.replace(f" {phrase} ", f" {same} ")
         for phrase in HARMLESS:
             part = part.replace(f" {phrase} ", " ")
         part_words = part.split()
         for i, word in enumerate(part_words):
             promise = KEYWORDS.get(singular(word))
-            if promise:
-                # up to 5 words back: "doesn't come with a charger" splits into
-                # doesn / t / come / with / a, so "doesn" is 5 words before
-                said = "no" if NEGATIONS & set(part_words[max(0, i - 5):i]) else "yes"
-                found.setdefault(promise, set()).add(said)
+            if not promise:
+                continue
+            if promise == "new" and set(part_words[i + 1:i + 3]) & PARTS:
+                continue  # "new battery fitted": the battery is new, not the item
+            if promise == "flawless":
+                if set(part_words[i + 1:i + 2]) & FEATURES:
+                    continue  # "excellent noise cancelling" describes the model
+                parts = sorted(CONDITION_PARTS & set(part_words[max(0, i - 2):i + 2]))
+                if parts:
+                    promise = f"flawless {parts[0]}"
+            after = part_words[i + 1:i + 4]
+            # up to 5 words back: "doesn't come with a charger" splits into
+            # doesn / t / come / with / a, so "doesn" is 5 words before
+            negated = bool(NEGATIONS & set(part_words[max(0, i - 5):i])) or bool(NEGATED_AFTER & set(after)) \
+                or any(w in ("not", "t") and nxt in INCLUDED for w, nxt in zip(after, after[1:]))
+            found.setdefault(promise, set()).add("no" if negated else "yes")
     return found
+
+
+def percentages_in(text):
+    """Every percentage in the text, written one way: "87%" and "87.0 per cent" are both "87"."""
+    return {f"{Decimal(n).normalize():f}" for n in PERCENT.findall(text)}
+
+
+def says_new(notes):
+    """True if your notes say the item itself is new or unused ("brand new",
+    "sealed", "unopened", "never used") and nothing says otherwise. "New battery
+    fitted" or "got a new phone" isn't enough."""
+    claims = promises_in(notes)
+    said = claims.get("new", set()) | claims.get("sealed", set())
+    return "yes" in said and "no" not in said and bool(NEW_ITEM.search(" ".join(words(notes))))
 
 
 def contact_details_in(text):
@@ -168,16 +242,31 @@ def check_no_invented_numbers(what, text, sources):
     return []
 
 
+def check_no_invented_percentages(what, text, notes, sources):
+    """A percentage, like battery health, is about this item's condition: it
+    must come from your notes, not the seller's words. (One that isn't in any
+    input at all is already reported by the numbers check.)"""
+    extra = (percentages_in(text) - percentages_in(notes)) & numbers_in(sources)
+    if extra:
+        return [f"{what} has a percentage your notes don't: {', '.join(f'{p}%' for p in sorted(extra))}"]
+    return []
+
+
 def check_no_invented_promises(what, text, sources, notes):
-    """Every claim in the text must be backed, with the same yes or no: by your
-    inputs for things like a box or charger, by your notes for condition."""
+    """Every claim in the text must be backed, with the same yes or no.
+    Condition claims only by your notes. Anything else by your notes if they
+    mention it ("no box" beats the seller's "boxed"), otherwise by any input.
+    And nothing is flawless when your notes mention a mark."""
     from_inputs, from_notes = promises_in(sources), promises_in(notes)
     unbacked, unbacked_condition = [], []
     for promise, saids in sorted(promises_in(text).items()):
-        condition = promise in CONDITION_PROMISES
-        backing = (from_notes if condition else from_inputs).get(promise, set())
+        condition = promise.split()[0] in CONDITION_PROMISES
+        backing = from_notes.get(promise) or (set() if condition else from_inputs.get(promise, set()))
+        if promise.startswith("flawless "):
+            backing = backing | from_notes.get("flawless", set())  # a mint item has a mint screen
         for said in sorted(saids, reverse=True):
-            if said not in backing:
+            marked = promise == "flawless" and said == "yes" and "yes" in from_notes.get("marks", set())
+            if said not in backing or marked:
                 (unbacked_condition if condition else unbacked).append(promise if said == "yes" else f"no {promise}")
     problems = []
     if unbacked:
@@ -214,8 +303,7 @@ def check_listing_answer(answer, item, colours, conditions, sources, notes):
 
     condition = canonical(answer["condition_id"], [c["id"] for c in conditions])
     if condition in NEW_CONDITIONS:
-        said_new = promises_in(notes or "").get("new", set()) | promises_in(notes or "").get("sealed", set())
-        if "yes" not in said_new:
+        if not says_new(notes or ""):
             problems.append("condition is New or Opened, but your notes don't say it's new or unused")
         if isinstance(answer["condition_note"], str) and answer["condition_note"].strip():
             problems.append("condition_note must be empty on a new item: eBay ignores it")
@@ -229,6 +317,7 @@ def check_listing_answer(answer, item, colours, conditions, sources, notes):
         problems += length_problems
         if not length_problems:
             problems += check_no_invented_numbers(what, text, sources)
+            problems += check_no_invented_percentages(what, text, notes or "", sources)
             problems += check_no_invented_promises(what, text, sources, notes or "")
             problems += check_no_contact_details(what, text)
     return problems
