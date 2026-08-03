@@ -6,7 +6,23 @@ __pycache__/
 # your real items: other sellers' listing text and your photos stay on this Mac
 testset/private/
 
-# API keys live here
-.env
+# everything the app saves while it runs stays on this Mac too: the audit
+# log, the Chroma database, your past messages, photos and results
+private/
+chroma/
+.chroma/
+*.sqlite3
+*.db
+logs/
 
+# API keys live in .env files. Only .env.example (no real keys) is uploaded
+.env*
+!.env.example
+
+# the web app's installed packages and built files
+node_modules/
+frontend/dist/
+
+# local editor and tool settings
+.claude/
 .DS_Store
