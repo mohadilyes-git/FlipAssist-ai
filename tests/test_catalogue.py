@@ -237,3 +237,10 @@ def test_an_edition_that_only_comes_one_way_is_filled():
 def test_the_sellers_description_can_raise_a_warning():
     item = fill_from_catalogue("iPhone 13 128GB", "", CATALOGUE, description="Face ID doesn't work")
     assert item["warnings"] == ["mentions doesn't work: check the condition before listing"]
+
+
+def test_nothing_reads_across_a_comma_or_from_title_into_notes():
+    assert fill("Switch OLED white", "dock and joy-cons included")["colour"] == "White"
+    assert fill("iPhone 13 Midnight, screen perfect")["colour"] == "Midnight"
+    assert model_id("iPhone 13 128GB, case included") == "iphone-13"   # the phone, with a case
+    assert model_id("iPhone 13 case, black") is None                   # a case

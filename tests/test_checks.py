@@ -13,7 +13,6 @@ TITLE = "iPhone 13 128GB unlocked"
 DESCRIPTION = "Selling my iPhone, works perfectly, screen protector on since day one. Perfect for gaming."
 NOTES = "boxed, battery 87%, light scratch on the back"
 ITEM = fill_from_catalogue(TITLE, NOTES, CATALOGUE)
-COLOURS = next(m for m in CATALOGUE if m["id"] == ITEM["model_id"])["colours"]
 SOURCES = sources_text(TITLE, DESCRIPTION, NOTES, ITEM)
 
 GOOD = {
@@ -26,7 +25,7 @@ GOOD = {
 
 
 def problems(notes=NOTES, sources=SOURCES, **changes):
-    return check_listing_answer({**GOOD, **changes}, ITEM, COLOURS, CONDITIONS["phones"], sources, notes)
+    return check_listing_answer({**GOOD, **changes}, ITEM, CATALOGUE, CONDITIONS["phones"], sources, notes)
 
 
 def test_a_good_answer_passes():
@@ -35,7 +34,7 @@ def test_a_good_answer_passes():
 
 def test_wrong_shape_fails():
     for answer in ({"colour": "Midnight"}, "Midnight, used", {**GOOD, "price": "£300"}):
-        assert check_listing_answer(answer, ITEM, COLOURS, CONDITIONS["phones"], SOURCES, NOTES) == \
+        assert check_listing_answer(answer, ITEM, CATALOGUE, CONDITIONS["phones"], SOURCES, NOTES) == \
             ["the answer isn't in the agreed shape"]
 
 
@@ -49,7 +48,7 @@ def test_colour_must_be_real_for_the_model():
 
 def test_colour_must_agree_with_the_listing_text():
     item = fill_from_catalogue("iPhone 13 128GB Pink unlocked", NOTES, CATALOGUE)
-    result = check_listing_answer({**GOOD, "description": "iPhone 13"}, item, COLOURS, CONDITIONS["phones"], SOURCES, NOTES)
+    result = check_listing_answer({**GOOD, "description": "iPhone 13"}, item, CATALOGUE, CONDITIONS["phones"], SOURCES, NOTES)
     assert result == ["colour 'Midnight' disagrees with the listing text ('Pink')"]
 
 
@@ -215,6 +214,58 @@ def test_nothing_is_flawless_when_your_notes_mention_a_mark():
     assert problems(notes=notes, description="Flawless iPhone 13.") == \
         ["description says things about the condition your notes don't: flawless"]
     assert problems(notes=notes, description="iPhone 13, screen perfect.") == []
+
+
+# ── found by the second check: drafts that contradict the item ─────────────
+
+@pytest.mark.parametrize("description, problem", [
+    ("Apple iPhone 13 Pro 128GB, unlocked, boxed.", "description names a different model from the iPhone 13"),
+    ("Apple iPhone 13 mini 128GB, unlocked, boxed.", "description names a different model from the iPhone 13"),
+    ("Apple iPhone 13 128GB in Blue, unlocked, boxed.", "description names a colour that isn't the item's: Blue"),
+    ("Apple iPhone 13 128GB in black, unlocked, boxed.", "description names a colour that isn't the item's: black"),
+    ("Apple iPhone 13 256GB, unlocked, boxed.", "description names a storage size that isn't the item's: 256GB"),
+])
+def test_a_draft_that_contradicts_the_item_fails(description, problem):
+    assert problem in problems(description=description)
+
+
+def test_the_reviewers_iphone_13_pro_draft_fails():
+    result = problems(description="Apple iPhone 13 Pro 128GB in Midnight, unlocked, boxed. Face ID works.")
+    assert "description names a different model from the iPhone 13" in result
+    assert "description says things about the condition your notes don't: working" in result
+
+
+def test_plus_a_case_is_not_the_plus_model():
+    assert problems(description="Apple iPhone 13 128GB, unlocked, boxed, plus a case.") == \
+        ["description says things your inputs don't: case"]
+
+
+def test_a_draft_naming_the_other_edition_fails():
+    title = "PS5 Slim disc edition 1TB white"
+    item = fill_from_catalogue(title, "", CATALOGUE)
+    answer = {"condition_id": "3000", "condition_note": "",
+              "description": "Sony PlayStation 5 Slim Digital Edition 1TB in White."}
+    assert check_listing_answer(answer, item, CATALOGUE, CONDITIONS["consoles"],
+                                sources_text(title, "", "", item), "") == \
+        ["description says Digital Edition, but the item's edition is Disc Edition"]
+
+
+def test_short_colour_names_and_unsure_are_allowed():
+    plain = "Apple iPhone 13 128GB, unlocked, boxed."
+    assert problems(colour="Red", description=plain) == []      # (PRODUCT)RED
+    assert problems(colour="unsure", description=plain) == []   # the colour is left for you
+    assert problems(colour="unsure", description="Apple iPhone 13 128GB in Midnight.") == \
+        ["description names a colour that isn't the item's: Midnight"]
+
+
+def test_no_colour_needed_when_code_already_knows_it():
+    item = fill_from_catalogue("iPhone 13 128GB Midnight unlocked", NOTES, CATALOGUE)
+    answer = {key: value for key, value in GOOD.items() if key != "colour"}
+    assert check_listing_answer(answer, item, CATALOGUE, CONDITIONS["phones"], SOURCES, NOTES) == []
+
+
+def test_a_listing_never_states_a_price():
+    assert "description mentions a price" in problems(description="Apple iPhone 13 128GB, bought for £220.")
 
 
 # ── messages ────────────────────────────────────────────────────────────────

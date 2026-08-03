@@ -10,13 +10,15 @@ answer is true. That's why you approve every draft.
 import re
 from decimal import Decimal
 
-from flip.catalogue import words
+from flip.catalogue import (COMMON_COLOURS, colours_named, contains, find_phrase, item_colour_mentioned,
+                            options_named, sizes_in, words)
 from flip.money import pounds, to_pence
 
 MAX_CONDITION_NOTE = 1000  # eBay's limit for the condition description
 MAX_DESCRIPTION = 1500     # our own limit: short listings read better and cost fewer tokens
 MAX_MESSAGE = 500
 NEW_CONDITIONS = {"1000", "1500"}  # New, Opened - never used: eBay ignores a condition note on these
+UNSURE = "unsure"  # the AI may answer this for colour when the photo doesn't show it: then it's for you
 
 # things a draft must not mention unless your inputs (title, description,
 # notes, catalogue) do too. Each line is one thing; any of its words counts.
@@ -117,6 +119,8 @@ PHONE = re.compile(r"(?:\+|00)44\d{9,11}|\b0[1-37]\d{8,9}\b")  # UK mobiles and 
 LONG_NUMBER = re.compile(r"\b\d{10,}\b")  # 10+ digits in a row: a phone number or an IMEI
 
 ANSWER_FIELDS = {"colour", "condition_id", "condition_note", "description"}
+# "iPhone 13 PLUS a case" is an iPhone 13 and a case, not an iPhone 13 Plus
+PLUS_MEANS_AND = {"a", "an", "the", "case", "cases", "charger", "box", "cable", "free", "original", "postage"}
 
 
 # ── reading text ────────────────────────────────────────────────────────────
@@ -201,13 +205,39 @@ def contact_details_in(text):
         any(pattern.search(joined) for pattern in (PHONE, LONG_NUMBER))
 
 
-def canonical(value, allowed):
-    """The allowed spelling of a value, ignoring case and punctuation
-    ("midnight" -> "Midnight", 3000 -> "3000"), or None if it isn't allowed."""
+def canonical(value, allowed, aliases=None):
+    """The allowed spelling of a value, ignoring case and punctuation, or None
+    if it isn't allowed: "midnight" -> "Midnight", 3000 -> "3000", and with the
+    model's short colour names "red" -> "(PRODUCT)RED"."""
+    aliases = aliases or {}
     for option in allowed:
-        if words(str(value)) == words(option):
+        if any(words(str(value)) == words(name) for name in [option, *aliases.get(option, [])]):
             return option
     return None
+
+
+def names_other_model(text_words, model, catalogue):
+    """True if the text names a model other than this one: another catalogue
+    model ("iPhone 14"), or this one's name next to a word for a different
+    version ("iPhone 13 mini", "WF-1000XM4"). A shorter family name is fine:
+    "PS5" on a PS5 Slim."""
+    own = [words(alias) for alias in model["aliases"]]
+    for other in catalogue:
+        if other is model:
+            continue
+        for alias in other["aliases"]:
+            alias_words = words(alias)
+            if not any(name[:len(alias_words)] == alias_words for name in own) and contains(text_words, alias_words):
+                return True
+    for name in own:
+        for start in find_phrase(text_words, name):
+            end = start + len(name)
+            before, after = text_words[max(0, start - 1):start], text_words[end:end + 2]
+            if after[:1] == ["plus"] and after[1:] and after[1] in PLUS_MEANS_AND:
+                after = []
+            if set(before + after[:1]) & set(model["not_if"]):
+                return True
+    return False
 
 
 def sources_text(title, description, notes, item):
@@ -219,8 +249,8 @@ def sources_text(title, description, notes, item):
 
 # ── single checks: each returns a list of problems, empty = passed ──────────
 
-def check_allowed(what, value, allowed):
-    if canonical(value, allowed) is None:
+def check_allowed(what, value, allowed, aliases=None):
+    if canonical(value, allowed, aliases) is None:
         return [f"{what} {value!r} isn't one of the allowed values"]
     return []
 
@@ -276,6 +306,39 @@ def check_no_invented_promises(what, text, sources, notes):
     return problems
 
 
+def check_matches_item(what, text, item, catalogue, colour):
+    """The text mustn't contradict the item: a different model or version, or a
+    colour, storage size or edition it doesn't have. colour is the one settled
+    for this item; if nobody knows it (None), no colour may be named."""
+    model = next(m for m in catalogue if m["id"] == item["model_id"])
+    text_words = words(text, breaks=True)
+    problems = []
+    if names_other_model(text_words, model, catalogue):
+        problems.append(f"{what} names a different model from the {model['model']}")
+    named = colours_named(text_words, model)
+    own = [colour, *model.get("colour_aliases", {}).get(colour, [])] if colour else []
+    covered = {word for name in [*own, *named] for word in words(name)}
+    wrong = sorted(named - {colour}) + sorted(c for c in COMMON_COLOURS - covered if item_colour_mentioned(text_words, c))
+    if wrong:
+        problems.append(f"{what} names a colour that isn't the item's: {', '.join(wrong)}")
+    sizes = sizes_in(text_words) & set(model["storage"])
+    if sizes - {item.get("storage")}:
+        problems.append(f"{what} names a storage size that isn't the item's: {', '.join(sorted(sizes - {item.get('storage')}))}")
+    for name, values in options_named(text_words, model).items():
+        mine = item.get("options", {}).get(name)
+        if values - {mine}:
+            problems.append(f"{what} says {', '.join(sorted(values - {mine}))}, "
+                            f"but the item's {name.lower()} is {mine or 'not known'}")
+    return problems
+
+
+def check_no_prices(what, text):
+    """A listing never states a price: not what you paid, not the seller's asking price."""
+    if any(pattern.search(text) for pattern in PRICES[:2]):
+        return [f"{what} mentions a price"]
+    return []
+
+
 def check_no_contact_details(what, text):
     if contact_details_in(text):
         return [f"{what} contains a link, email, phone number, handle or long ID number"]
@@ -284,21 +347,29 @@ def check_no_contact_details(what, text):
 
 # ── all checks for one AI answer ────────────────────────────────────────────
 
-def check_listing_answer(answer, item, colours, conditions, sources, notes):
+def check_listing_answer(answer, item, catalogue, conditions, sources, notes):
     """Every check on the AI's part of a listing. An empty list means it passed.
 
-    answer: what the AI sent back
+    answer: what the AI sent back. It has a colour only when code couldn't
+        fill one, and that colour may be "unsure": then the colour is for you
     item: what code already filled (fill_from_catalogue)
-    colours: the model's real colours; conditions: eBay's list for the category
+    catalogue: the models (load_catalogue); conditions: eBay's list for the category
     sources: sources_text(...) for this item; notes: your notes on their own
     """
-    if not isinstance(answer, dict) or set(answer) != ANSWER_FIELDS:
+    required = ANSWER_FIELDS - {"colour"} if item.get("colour") else ANSWER_FIELDS
+    if not isinstance(answer, dict) or not required <= set(answer) <= ANSWER_FIELDS:
         return ["the answer isn't in the agreed shape"]
+    model = next(m for m in catalogue if m["id"] == item["model_id"])
+    aliases = model.get("colour_aliases", {})
 
-    problems = check_allowed("colour", answer["colour"], colours)
-    colour = canonical(answer["colour"], colours)
-    if item.get("colour") and colour and colour != item["colour"]:
-        problems.append(f"colour {colour!r} disagrees with the listing text ({item['colour']!r})")
+    problems = []
+    colour = item.get("colour")
+    if "colour" in answer and str(answer["colour"]).strip().lower() != UNSURE:
+        problems += check_allowed("colour", answer["colour"], model["colours"], aliases)
+        picked = canonical(answer["colour"], model["colours"], aliases)
+        if colour and picked and picked != colour:
+            problems.append(f"colour {picked!r} disagrees with the listing text ({colour!r})")
+        colour = colour or picked
     problems += check_allowed("condition", answer["condition_id"], [c["id"] for c in conditions])
 
     condition = canonical(answer["condition_id"], [c["id"] for c in conditions])
@@ -319,6 +390,8 @@ def check_listing_answer(answer, item, colours, conditions, sources, notes):
             problems += check_no_invented_numbers(what, text, sources)
             problems += check_no_invented_percentages(what, text, notes or "", sources)
             problems += check_no_invented_promises(what, text, sources, notes or "")
+            problems += check_matches_item(what, text, item, catalogue, colour)
+            problems += check_no_prices(what, text)
             problems += check_no_contact_details(what, text)
     return problems
 

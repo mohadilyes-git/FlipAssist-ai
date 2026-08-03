@@ -51,20 +51,27 @@ def load_conditions():
     return data
 
 
-def words(text):
+BREAK = "|"  # where one part of a sentence ends: no rule reads across it
+
+
+def words(text, breaks=False):
     """Cut text into lowercase words, splitting letters from numbers.
 
     "iPhone13 128GB" -> ["iphone", "13", "128", "gb"], so "iphone13",
     "iPhone 13" and "IPHONE-13" all look the same. Accents are dropped
     ("Pokémon" -> "pokemon"). A "+" stuck to a name ("S23+") becomes "plus";
     a "+" on its own ("phone + case") is dropped. "'s" is dropped, so
-    "it's 23 months" can't read as an S23.
+    "it's 23 months" can't read as an S23. With breaks, a comma, full stop
+    or bracket becomes BREAK, so "Blue, screen perfect" keeps "blue" apart
+    from "screen".
     """
     text = unicodedata.normalize("NFKD", text.lower())
     text = "".join(ch for ch in text if not unicodedata.combining(ch))
     text = re.sub(r"(?<=[a-z0-9])['’ʼ]s\b", "", text)
     text = re.sub(r"(?<=[a-z0-9])\+", " plus ", text)
-    return re.findall(r"[a-z]+|\d+", text)
+    if not breaks:
+        return re.findall(r"[a-z]+|\d+", text)
+    return [BREAK if word in ",.;:!?()\n" else word for word in re.findall(r"[a-z]+|\d+|[,.;:!?()\n]", text)]
 
 
 def find_phrase(text_words, phrase_words):
@@ -111,7 +118,7 @@ def find_model(text, catalogue):
     5. The answer is a model only if it's the one thing left. Two products
        named in different places, or one we ruled out, means we can't tell.
     """
-    text_words = words(text)
+    text_words = words(text, breaks=True)
     if any(contains(text_words, words(phrase)) for phrase in NOT_THE_ITEM):
         return None
     matches = []  # (start, end, model, ruled_out)
@@ -241,7 +248,7 @@ def fill_from_catalogue(title, notes, catalogue, description=""):
     """
     title, notes = title or "", notes or ""
     text = f"{title} {notes}"
-    text_words = words(text)
+    text_words = [*words(title, breaks=True), BREAK, *words(notes, breaks=True)]
     warnings = warnings_for(words(f"{text} {description or ''}"))
 
     from_title = find_model(title, catalogue)
