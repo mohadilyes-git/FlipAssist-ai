@@ -399,6 +399,14 @@ def check_listing_answer(answer, item, catalogue, conditions, sources, notes):
     return problems
 
 
+def pence_or_none(amount):
+    """to_pence, or None for an amount that can't be a real price."""
+    try:
+        return to_pence(amount)
+    except ValueError:
+        return None
+
+
 def check_message(message, offer, sources, asking=None):
     """Every check on a drafted message to a seller. offer and asking are in pence.
 
@@ -411,9 +419,9 @@ def check_message(message, offer, sources, asking=None):
     if problems:
         return problems
     rest = message
-    if asking is not None and all(to_pence(amount) == asking for amount in ASKING_MENTION.findall(message)):
+    if asking is not None and all(pence_or_none(amount) == asking for amount in ASKING_MENTION.findall(message)):
         rest = ASKING_MENTION.sub(" ", message)
-    prices = {to_pence(amount) for pattern in PRICES for amount in pattern.findall(rest)}
+    prices = {pence_or_none(amount) for pattern in PRICES for amount in pattern.findall(rest)}
     if prices != {offer}:
         problems.append(f"the message must offer exactly {pounds(offer)} and no other price")
     problems += check_no_invented_numbers("message", message, f"{sources} {pounds(offer)}")

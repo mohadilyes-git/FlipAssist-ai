@@ -1,3 +1,5 @@
+import pytest
+
 from flip.catalogue import fill_from_catalogue, load_catalogue
 from flip.money import offer_price, pounds, profit, to_pence
 from flip.title import MAX_LENGTH, build_title
@@ -59,3 +61,9 @@ def test_offer_price_rounds_down_to_tidy_numbers():
     assert offer_price(9500) == 8000                       # £95 -> £80.75 -> £80
     assert offer_price(1500) == 1200                       # £15 -> £12.75 -> £12
     assert offer_price(20000, discount_percent=10) == 18000
+
+
+def test_silly_amounts_are_refused_not_crashed():
+    for amount in ("9" * 40, "abc", "£1,000,000"):
+        with pytest.raises(ValueError):
+            to_pence(amount)

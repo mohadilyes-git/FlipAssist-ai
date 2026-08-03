@@ -306,3 +306,8 @@ def test_the_asking_price_cant_hide_a_second_offer():
     message = "It's listed at £200, but would you take £170 or £200?"
     assert "the message must offer exactly £170.00 and no other price" in \
         check_message(message, 17000, LISTING, asking=20000)
+
+
+def test_a_silly_amount_in_a_message_fails_instead_of_crashing():
+    assert "the message must offer exactly £170.00 and no other price" in \
+        check_message("Would you take £" + "9" * 40 + "?", 17000, LISTING)

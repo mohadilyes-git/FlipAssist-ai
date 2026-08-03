@@ -5,7 +5,8 @@ plain code fills it correctly, leaves it for you, or gets it wrong.
     .venv/bin/python -m flip.score testset/items.example.json
 
 "Wrong" is the number that matters most: a gap goes to you, a wrong answer
-could reach a buyer.
+could reach a buyer. A field that doesn't apply (a console has no network) is
+counted on its own, never as "right".
 """
 
 import json
@@ -18,7 +19,7 @@ FIELDS = ["model_id", "storage", "colour", "network", "options"]
 
 
 def score(items, catalogue):
-    totals = {field: {"right": 0, "left for you": 0, "wrong": 0} for field in FIELDS}
+    totals = {field: {"right": 0, "left for you": 0, "wrong": 0, "doesn't apply": 0} for field in FIELDS}
     wrong = []
     for item in items:
         filled = fill_from_catalogue(item["original_title"], item["my_notes"], catalogue)
@@ -28,7 +29,9 @@ def score(items, catalogue):
             # an option code couldn't pick counts as "left for you" for the whole field
             if field == "options" and got is not None and any(value is None for value in got.values()):
                 got = None
-            if got == expected:
+            if field != "model_id" and expected in (None, {}) and got in (None, {}):
+                totals[field]["doesn't apply"] += 1
+            elif got == expected:
                 totals[field]["right"] += 1
             elif got is None:
                 totals[field]["left for you"] += 1
@@ -43,9 +46,10 @@ def main():
     items = json.loads(path.read_text(encoding="utf-8"))
     totals, wrong = score(items, load_catalogue())
     print(f"{len(items)} items from {path}\n")
-    print(f"{'field':<10} {'right':>6} {'left for you':>13} {'wrong':>6}")
+    na = "doesn't apply"
+    print(f"{'field':<10} {'right':>6} {'left for you':>13} {'wrong':>6} {na:>14}")
     for field, counts in totals.items():
-        print(f"{field:<10} {counts['right']:>6} {counts['left for you']:>13} {counts['wrong']:>6}")
+        print(f"{field:<10} {counts['right']:>6} {counts['left for you']:>13} {counts['wrong']:>6} {counts[na]:>14}")
     if wrong:
         print("\nwrong answers (fix the catalogue or the code for these):")
         print("\n".join(f"  {line}" for line in wrong))

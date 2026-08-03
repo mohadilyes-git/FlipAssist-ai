@@ -2,13 +2,22 @@
 (£12.50 is 1250), because computers store 0.1 + 0.2 as 0.30000000000000004 and
 whole numbers never have that problem."""
 
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+
+TOO_BIG = Decimal("1000000")  # a million pounds or more is a typo, not a price
 
 
 def to_pence(pounds):
-    """'12.50', '£1,200' or 12.5 -> 1250, 120000, 1250"""
+    """'12.50', '£1,200' or 12.5 -> 1250, 120000, 1250. Anything that isn't a
+    sensible amount ("abc", a 40-digit number) is a ValueError, not a crash."""
     text = str(pounds).replace("£", "").replace(",", "").strip()
-    return int((Decimal(text) * 100).quantize(Decimal("1"), ROUND_HALF_UP))
+    try:
+        amount = Decimal(text)
+    except InvalidOperation:
+        raise ValueError(f"not an amount of money: {pounds!r}") from None
+    if not amount.is_finite() or abs(amount) >= TOO_BIG:
+        raise ValueError(f"not a sensible amount of money: {pounds!r}")
+    return int((amount * 100).quantize(Decimal("1"), ROUND_HALF_UP))
 
 
 def pounds(pence):
