@@ -122,13 +122,13 @@ def test_ps5_slim_comes_in_two_sizes():
 
 
 def test_two_options_named_means_unsure():
-    item = fill("original PS5 disc console, digital edition box")
+    item = fill("PS5 2020 model, disc console, digital edition box")
     assert item["options"] == {"Edition": None}
     assert "Edition" in item["missing"]
 
 
 def test_disc_games_are_not_the_disc_edition():
-    assert fill("original PS5 digital with 3 disc games")["options"] == {"Edition": "Digital Edition"}
+    assert fill("PS5 digital, 2020 model, with 3 disc games")["options"] == {"Edition": "Digital Edition"}
 
 
 def test_two_colours_named_means_unsure():
@@ -222,14 +222,24 @@ def test_ps5_on_its_own_could_be_the_slim():
 
 def test_your_notes_can_name_the_exact_model():
     assert fill("PS5 disc edition", "it's the PS5 Slim")["model_id"] == "ps5-slim"
-    assert fill("iPhone 13 Pro 128GB", "iphone 13, good condition")["model_id"] == "iphone-13-pro"
+
+
+@pytest.mark.parametrize("title, notes", [
+    ("iPhone 13 Pro 128GB unlocked", "checked: it's a regular iPhone 13, seller got the title wrong"),
+    ("iPhone 15 Pro 256GB unlocked", "it's actually an iPhone 15, not the pro"),
+    ("PS5 Slim Disc Edition", "it's the original PS5 2020 launch model"),
+])
+def test_notes_naming_another_model_go_to_you(title, notes):
+    item = fill(title, notes)
+    assert item["model_id"] is None
+    assert "the title and your notes name different models" in item["warnings"]
 
 
 def test_an_edition_that_only_comes_one_way_is_filled():
     item = fill("PS5 Slim Wolverine edition")
     assert (item["colour"], item["storage"], item["options"]) == \
         ("Marvel's Wolverine Battle Yellow", "825GB", {"Edition": "Digital Edition"})
-    item = fill("PS5 Slim Wolverine disc edition")
+    item = fill("PS5 Slim Battle Yellow disc edition")
     assert item["options"] == {"Edition": None}
     assert item["warnings"] == ["the Marvel's Wolverine Battle Yellow only comes as Digital Edition: check the edition"]
 
@@ -244,3 +254,46 @@ def test_nothing_reads_across_a_comma_or_from_title_into_notes():
     assert fill("iPhone 13 Midnight, screen perfect")["colour"] == "Midnight"
     assert model_id("iPhone 13 128GB, case included") == "iphone-13"   # the phone, with a case
     assert model_id("iPhone 13 case, black") is None                   # a case
+
+
+# ── found by the attack agents: reading the item ───────────────────────────
+
+def test_original_controllers_dont_make_it_the_original_ps5():
+    assert fill("PS5 Digital Edition with 2 original PS5 controllers")["model_id"] is None
+
+
+def test_the_wolverine_game_is_not_the_wolverine_edition():
+    item = fill("PS5 Slim Digital 825GB with Wolverine")
+    assert (item["colour"], item["options"]) == (None, {"Edition": "Digital Edition"})
+
+
+@pytest.mark.parametrize("title", [
+    "PS5 Slim Disc Drive",
+    "Apple AirPods Pro 2 Charging Case USB-C",
+    "AirPods Pro 2nd Gen Charging Case Lightning (no earbuds)",
+    "Nintendo Switch OLED Joy-Cons white",
+    "Genuine iPhone 13 screen OLED",
+])
+def test_parts_are_not_the_item(title):
+    assert model_id(title) is None
+
+
+@pytest.mark.parametrize("title, notes", [
+    ("iPhone 13 128GB Blue", "not sure if it's unlocked, need to check"),
+    ("iPhone 14 128GB Purple", "unlocked?"),
+    ("Samsung Galaxy S23 128GB Cream", "seller says unlocked, will check"),
+])
+def test_unlocked_with_a_doubt_is_for_you(title, notes):
+    assert fill(title, notes)["network"] is None
+
+
+@pytest.mark.parametrize("title, notes, expected", [
+    ("iPhone 13 128GB Midnight unlocked plus charger", "", "iphone-13"),
+    ("iPhone 13 128GB Midnight unlocked", "boxed plus original charger", "iphone-13"),
+    ("iPhone 13 128GB Midnight unlocked + screen protector", "", "iphone-13"),
+    ("iPhone 13 128GB Midnight unlocked", "battery max capacity 86%", "iphone-13"),
+    ("Apple AirPods Pro (2nd Generation) USB-C", "", "airpods-pro-2"),
+    ("Nintendo Switch (OLED Model) White", "", "switch-oled"),
+])
+def test_everyday_wording_doesnt_hide_the_model(title, notes, expected):
+    assert fill(title, notes)["model_id"] == expected

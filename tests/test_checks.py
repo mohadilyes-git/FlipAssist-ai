@@ -368,6 +368,47 @@ def test_invented_bundle_items_fail():
         answer_for("PS5 Slim disc 1TB white", "", "PlayStation 5 Slim Disc Edition 1TB in White, with vertical stand, HDMI and headset.")
 
 
+# ── found by the attack agents: reading the item ───────────────────────────
+
+@pytest.mark.parametrize("game", ["Call of Duty Black Ops 6", "Red Dead Redemption 2"])
+def test_colour_words_in_game_titles_dont_count(game):
+    assert answer_for("PS5 Slim Disc 1TB White", f"comes with {game}",
+                      f"PlayStation 5 Slim Disc Edition, 1TB, White. Comes with {game}.") == []
+
+
+def test_the_other_edition_mentioned_in_passing_is_fine():
+    assert answer_for("PS5 Slim Digital 825GB White", "",
+                      "PS5 Slim Digital Edition, 825GB, White. It doesn't have a disc drive.") == []
+    assert answer_for("PS5 Slim Disc 1TB White", "",
+                      "PS5 Slim Disc Edition, 1TB, White. Plays discs and digital downloads.") == []
+    assert fill_from_catalogue("AirPods Pro 2 with USB-C to Lightning cable", "", CATALOGUE)["options"] == \
+        {"Connector": None}
+
+
+@pytest.mark.parametrize("title, notes, description", [
+    ("iPhone 15 Pro 256GB Black Titanium unlocked", "",
+     "iPhone 15 Pro 256GB in Black Titanium, unlocked. Shows natural signs of use."),
+    ("PS5 Slim Digital 30th Anniversary 825GB", "",
+     "PS5 Slim Digital Edition, 30th Anniversary, 825GB, in the classic PlayStation grey."),
+    ("PS5 Slim Disc 1TB White", "black covers fitted", "PS5 Slim Disc Edition, 1TB, White, with black covers fitted."),
+    ("Nintendo Switch OLED Splatoon 3 Edition", "", "Nintendo Switch OLED, Splatoon 3 Edition, blue and yellow design."),
+    ("iPhone 13 128GB Blue unlocked", "comes with white charging cable",
+     "iPhone 13 128GB in Blue, unlocked. Comes with the white charging cable."),
+])
+def test_colour_words_that_arent_the_items_colour(title, notes, description):
+    assert answer_for(title, notes, description) == []
+
+
+@pytest.mark.parametrize("title, description", [
+    ("PS5 Slim Digital 825GB White", "Sony PS5 Pro Digital Edition, 825GB, White."),
+    ("iPhone 15 Pro 256GB Black Titanium unlocked", "Apple iPhone 15 Plus 256GB in Black Titanium, unlocked."),
+    ("iPhone 13 Pro 128GB Graphite unlocked", "Apple iPhone 13 mini 128GB in Graphite, unlocked."),
+])
+def test_a_family_name_with_another_version_fails(title, description):
+    model = fill_from_catalogue(title, "", CATALOGUE)["model"]
+    assert f"description names a different model from the {model}" in answer_for(title, "", description)
+
+
 # ── messages ────────────────────────────────────────────────────────────────
 
 LISTING = "PS5 disc edition, 2 controllers, £200"

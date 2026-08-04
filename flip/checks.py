@@ -10,7 +10,7 @@ answer is true. That's why you approve every draft.
 import re
 from decimal import Decimal
 
-from flip.catalogue import (COMMON_COLOURS, colours_named, contains, find_phrase, item_colour_mentioned,
+from flip.catalogue import (COMMON_COLOURS, PLUS_MEANS_AND, colours_named, find_phrase, item_colour_mentioned,
                             options_named, sizes_in, words)
 from flip.money import pounds, to_pence
 
@@ -127,7 +127,9 @@ NEW_PROBLEMS = {"1000": "condition is New, but your notes don't say it's brand n
                 "1500": "condition is Opened - never used, but your notes don't say it's unused"}
 # a fault in your notes means the item is "For parts or not working", and no
 # draft may call it fully working. "No faults", "no drift" aren't faults
-FAULTS = re.compile(r"\b(?:not working|broken|drift|drifting|dead|faulty|fault|faults|glitch\w*|for parts|spares|"
+FAULTS = re.compile(r"\b(?:not working|broken|drift|drifting|faulty|fault|faults|glitch\w*|for parts|spares|"
+                    r"dead pixels?|(?:is|totally|completely|went|now) dead|dead (?:battery|phone|console|unit|on arrival)|"
+                    r"battery (?:is )?dead|"
                     r"won t (?:turn on|switch on|charge|connect|pair|boot)|doesn t (?:turn on|charge|connect|pair)|"
                     r"not charging|no sound|no power)\b")
 NOT_A_FAULT = re.compile(r"\b(?:no|not|never|without)\s+(?:been\s+)?(?:any\s+)?(?:\w+\s+)?"
@@ -164,8 +166,6 @@ PHONE = re.compile(r"(?:\+|00)44\d{9,11}|\b0[1-37]\d{8,9}\b")  # UK mobiles and 
 LONG_NUMBER = re.compile(r"\b\d{10,}\b")  # 10+ digits in a row: a phone number or an IMEI
 
 ANSWER_FIELDS = {"colour", "condition_id", "condition_note", "description"}
-# "iPhone 13 PLUS a case" is an iPhone 13 and a case, not an iPhone 13 Plus
-PLUS_MEANS_AND = {"a", "an", "the", "case", "cases", "charger", "box", "cable", "free", "original", "postage"}
 
 
 # ── reading text ────────────────────────────────────────────────────────────
@@ -317,26 +317,34 @@ def canonical(value, allowed, aliases=None):
     return None
 
 
+def names_a_version(text_words, end, not_if):
+    """True if the word right after a name makes it a different version:
+    "iPhone 13 MINI", "PS5 PRO". Not "plus" meaning "and" ("plus a case")."""
+    after = text_words[end:end + 2]
+    if not after or after[0] not in not_if:
+        return False
+    return not (after[0] == "plus" and after[1:] and after[1] in PLUS_MEANS_AND)
+
+
 def names_other_model(text_words, model, catalogue):
     """True if the text names a model other than this one: another catalogue
-    model ("iPhone 14"), or this one's name next to a word for a different
-    version ("iPhone 13 mini", "WF-1000XM4"). A shorter family name is fine:
-    "PS5" on a PS5 Slim."""
+    model ("iPhone 14"), or a name next to a word for a different version
+    ("iPhone 13 mini", "PS5 Pro" on a PS5 Slim, "WF-1000XM4"). A shorter family
+    name on its own is fine: "PS5" on a PS5 Slim."""
     own = [words(alias) for alias in model["aliases"]]
     for other in catalogue:
         if other is model:
             continue
         for alias in other["aliases"]:
             alias_words = words(alias)
-            if not any(name[:len(alias_words)] == alias_words for name in own) and contains(text_words, alias_words):
-                return True
+            family = any(name[:len(alias_words)] == alias_words for name in own)
+            for start in find_phrase(text_words, alias_words):
+                if not family or names_a_version(text_words, start + len(alias_words), model["not_if"]):
+                    return True
     for name in own:
         for start in find_phrase(text_words, name):
-            end = start + len(name)
-            before, after = text_words[max(0, start - 1):start], text_words[end:end + 2]
-            if after[:1] == ["plus"] and after[1:] and after[1] in PLUS_MEANS_AND:
-                after = []
-            if set(before + after[:1]) & set(model["not_if"]):
+            before = text_words[max(0, start - 1):start]
+            if set(before) & set(model["not_if"]) or names_a_version(text_words, start + len(name), model["not_if"]):
                 return True
     return False
 
@@ -411,18 +419,21 @@ def check_no_invented_promises(what, text, sources, notes):
     return problems
 
 
-def check_matches_item(what, text, item, catalogue, colour):
+def check_matches_item(what, text, item, catalogue, colour, sources=""):
     """The text mustn't contradict the item: a different model or version, or a
     colour, storage size or edition it doesn't have. colour is the one settled
-    for this item; if nobody knows it (None), no colour may be named."""
+    for this item; if nobody knows it (None), no colour may be named. A plain
+    colour word your inputs already use isn't counted: "Call of Duty: Black Ops"
+    is a game, not the console's colour."""
     model = next(m for m in catalogue if m["id"] == item["model_id"])
     text_words = words(text, breaks=True)
     problems = []
     if names_other_model(text_words, model, catalogue):
         problems.append(f"{what} names a different model from the {model['model']}")
     named = colours_named(text_words, model)
-    own = [colour, *model.get("colour_aliases", {}).get(colour, [])] if colour else []
-    covered = {word for name in [*own, *named] for word in words(name)}
+    own = [colour, *model.get("colour_aliases", {}).get(colour, []), *model.get("colour_words", {}).get(colour, [])] \
+        if colour else []
+    covered = {word for name in [*own, *named] for word in words(name)} | set(words(sources))
     wrong = sorted(named - {colour}) + sorted(c for c in COMMON_COLOURS - covered if item_colour_mentioned(text_words, c))
     if wrong:
         problems.append(f"{what} names a colour that isn't the item's: {', '.join(wrong)}")
@@ -500,7 +511,7 @@ def check_listing_answer(answer, item, catalogue, conditions, sources, notes):
             problems += check_no_invented_numbers(what, text, sources)
             problems += check_no_invented_percentages(what, text, notes or "", sources)
             problems += check_no_invented_promises(what, text, sources, notes or "")
-            problems += check_matches_item(what, text, item, catalogue, colour)
+            problems += check_matches_item(what, text, item, catalogue, colour, sources)
             problems += check_no_prices(what, text)
             problems += check_no_contact_details(what, text)
     return problems
