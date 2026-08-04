@@ -589,32 +589,6 @@
       "colour_aliases": {},
       "options": {"Connector": {"Lightning": ["lightning"], "USB-C": ["usb c", "usbc", "type c"]}},
       "specs": {"Release Year": "2022", "Case": "MagSafe Charging Case"}
-    },
-    {
-      "id": "sony-wh-1000xm4",
-      "category": "headphones",
-      "brand": "Sony",
-      "model": "WH-1000XM4",
-      "aliases": ["wh 1000xm4", "1000xm4", "xm4"],
-      "not_if": ["wf", "earbuds", "buds"],
-      "storage": [],
-      "colours": ["Black", "Silver", "Midnight Blue", "Silent White"],
-      "colour_aliases": {},
-      "options": {},
-      "specs": {"Release Year": "2020"}
-    },
-    {
-      "id": "sony-wh-1000xm5",
-      "category": "headphones",
-      "brand": "Sony",
-      "model": "WH-1000XM5",
-      "aliases": ["wh 1000xm5", "1000xm5", "xm5"],
-      "not_if": ["wf", "earbuds", "buds"],
-      "storage": [],
-      "colours": ["Black", "Silver", "Midnight Blue", "Smoky Pink"],
-      "colour_aliases": {},
-      "options": {},
-      "specs": {"Release Year": "2022"}
     }
   ]
 }

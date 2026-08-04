@@ -6,7 +6,7 @@ Drafts eBay listings and offer messages for a reseller. Plain code does everythi
 
 ## What it does now
 
-- **Finds the product** in a messy listing title ("iphone13 128gb unlocked boxed") using a catalogue of 44 models: every iPhone from the SE to the 17, plus the Galaxy S23, PS5, PS5 Slim, Switch OLED, AirPods Pro 2 and Sony WH-1000XM4 and XM5. It then fills every fact the catalogue knows:
+- **Finds the product** in a messy listing title ("iphone13 128gb unlocked boxed") using a catalogue of 42 models: every iPhone from the SE to the 17, plus the Galaxy S23, PS5, PS5 Slim, Switch OLED and AirPods Pro 2. It then fills every fact the catalogue knows:
   - model and storage;
   - colour, when the text names exactly one;
   - options such as Disc or Digital;

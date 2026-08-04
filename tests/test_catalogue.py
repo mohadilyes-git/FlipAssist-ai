@@ -36,8 +36,7 @@ def test_words_split_letters_from_numbers():
     ("Samsung Galaxy S23+ 256GB", None),          # the + means Plus
     ("Samsung Galaxy S23U", None),
     ("Samsung S23 8GB RAM 256GB", "galaxy-s23"),
-    ("Sony WH1000XM4 headphones", "sony-wh-1000xm4"),
-    ("sony xm5 black", "sony-wh-1000xm5"),
+    ("Sony WH-1000XM5 headphones", None),         # AlertFlip doesn't cover them, so neither do we
     ("AirPods Pro 2nd generation USB-C", "airpods-pro-2"),
     ("AirPods Pro 1st gen", None),
     ("Nintendo Switch OLED white", "switch-oled"),
@@ -51,8 +50,6 @@ def test_find_model(title, expected):
 
 # each of these used to give a confident wrong answer (found by the day-1 check)
 @pytest.mark.parametrize("title", [
-    "Sony WF-1000XM4 wireless earbuds black",     # earbuds, not the WH headphones
-    "Sony WF1000XM5 earbuds",
     "Sony PlayStation 5 Console 1TB with disc drive",  # a Slim without the word "slim"
     "PS5 Digital Edition 1TB",
     "PS5 CFI-2016 disc",
@@ -61,7 +58,7 @@ def test_find_model(title, expected):
     "iPhone 13 case",
     "iPhone 13 box only",
     "Screen protector iPhone 15",
-    "Replacement ear pads for XM5",
+    "Replacement ear tips for AirPods Pro 2",
     "AirPods Pro 2 left earbud",
     "Switch OLED dock only",
     "PS5 games bundle",
