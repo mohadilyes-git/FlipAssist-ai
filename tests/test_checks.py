@@ -58,7 +58,7 @@ def test_condition_must_be_on_ebays_list():
 
 def test_new_condition_needs_your_notes_to_say_new():
     assert problems(condition_id="1000", condition_note="") == \
-        ["condition is New or Opened, but your notes don't say it's new or unused"]
+        ["condition is New, but your notes don't say it's brand new and unopened"]
 
 
 def test_new_item_has_no_condition_note():
@@ -103,9 +103,9 @@ def test_your_no_beats_the_drafts_yes():
 
 def test_doesnt_come_with_is_a_no():
     assert promises_in("doesn't come with a charger") == {"charger": {"no"}}
-    assert promises_in("no scratches, comes with box") == {"marks": {"no"}, "box": {"yes"}}
-    assert promises_in("no scratches and comes with box") == {"marks": {"no"}, "box": {"yes"}}
-    assert promises_in("scratch free") == {"marks": {"no"}}
+    assert promises_in("no scratches, comes with box") == {"scratch": {"no"}, "box": {"yes"}}
+    assert promises_in("no scratches and comes with box") == {"scratch": {"no"}, "box": {"yes"}}
+    assert promises_in("scratch free") == {"scratch": {"no"}}
 
 
 def test_condition_claims_need_your_notes_not_the_sellers_words():
@@ -118,7 +118,7 @@ def test_condition_claims_need_your_notes_not_the_sellers_words():
 
 def test_no_scratches_when_your_notes_say_scratch_fails():
     assert problems(condition_note="No scratches.") == \
-        ["condition_note says things about the condition your notes don't: no marks"]
+        ["condition_note says things about the condition your notes don't: no scratch"]
 
 
 def test_harmless_phrases_are_not_claims():
@@ -179,7 +179,7 @@ def test_a_percentage_must_come_from_your_notes():
 def test_a_new_part_doesnt_make_the_item_new():
     notes = "new battery fitted, light scratch on the back"
     assert problems(notes=notes, condition_id="1000", condition_note="", description="iPhone 13.") == \
-        ["condition is New or Opened, but your notes don't say it's new or unused"]
+        ["condition is New, but your notes don't say it's brand new and unopened"]
     assert problems(notes="opened but never used", condition_id="1500", condition_note="",
                     description="iPhone 13.") == []
 
@@ -190,8 +190,8 @@ def test_a_new_part_doesnt_make_the_item_new():
     ("charger isn't included", {"charger": {"no"}}),
     ("original box missing", {"box": {"no"}}),
     ("can't find the box", {"box": {"no"}}),
-    ("dent-free", {"marks": {"no"}}),
-    ("free from scratches", {"marks": {"no"}}),
+    ("dent-free", {"dent": {"no"}}),
+    ("free from scratches", {"scratch": {"no"}}),
     ("fully working, no faults", {"working": {"yes"}}),
     ("faulty speaker", {"working": {"no"}}),
     ("comes with dock and Joy-Cons", {"dock": {"yes"}, "controller": {"yes"}}),
@@ -269,6 +269,103 @@ def test_no_colour_needed_when_code_already_knows_it():
 
 def test_a_listing_never_states_a_price():
     assert "description mentions a price" in problems(description="Apple iPhone 13 128GB, bought for £220.")
+
+
+# ── found by the attack agents: claims ─────────────────────────────────────
+
+def answer_for(title, notes, description, condition_id="3000", condition_note="", seller=""):
+    """Check one hand-written answer for any catalogue item."""
+    item = fill_from_catalogue(title, notes, CATALOGUE, seller)
+    answer = {"condition_id": condition_id, "condition_note": condition_note, "description": description}
+    if not item.get("colour"):
+        answer["colour"] = "unsure"
+    return check_listing_answer(answer, item, CATALOGUE, CONDITIONS[item["category"]],
+                                sources_text(title, seller, notes, item), notes)
+
+
+@pytest.mark.parametrize("notes", [
+    "used but in brand new condition, no marks",
+    "bought brand new from samsung in 2023, used daily since",
+    "box opened, console never used",
+])
+def test_used_or_opened_is_never_new(notes):
+    assert "condition is New, but your notes don't say it's brand new and unopened" in \
+        answer_for("Galaxy S23 256GB Lavender unlocked", notes, "Samsung Galaxy S23 256GB in Lavender, unlocked.", "1000")
+
+
+def test_opened_but_never_used_can_be_opened_never_used():
+    assert answer_for("PS5 Slim digital 1TB white", "box opened, console never used",
+                      "PlayStation 5 Slim Digital Edition 1TB in White.", "1500") == []
+
+
+@pytest.mark.parametrize("notes", [
+    "face id stopped working, screen fine",
+    "fully working apart from left joycon drift",
+    "screen works, face id broken",
+])
+def test_a_fault_in_your_notes_blocks_fully_working(notes):
+    result = answer_for("iPhone 15 128GB Black unlocked", notes,
+                        "Apple iPhone 15 128GB in Black, unlocked. Fully working.", "7000")
+    assert "description says things about the condition your notes don't: working" in result
+
+
+def test_a_fault_means_for_parts_and_for_parts_needs_a_fault():
+    assert "your notes mention a fault, so the condition must be For parts or not working" in \
+        answer_for("iPhone 13 128GB Blue unlocked", "won't turn on, for parts", "Apple iPhone 13 128GB in Blue, unlocked.")
+    assert "condition is For parts or not working, but your notes don't mention a fault" in \
+        answer_for("iPhone 13 128GB Blue unlocked", "light scratch on the back",
+                   "Apple iPhone 13 128GB in Blue, unlocked.", "7000")
+
+
+def test_each_kind_of_mark_is_its_own_claim():
+    notes = "small scratch on the screen, no dents or cracks"
+    title = "Galaxy S23 128GB Cream unlocked"
+    assert "description says things about the condition your notes don't: no scratch" in \
+        answer_for(title, notes, "Samsung Galaxy S23 128GB in Cream, unlocked. Screen is scratch free.")
+    assert answer_for(title, notes, "Samsung Galaxy S23 128GB in Cream, unlocked. Small scratch on the screen, no dents.") == []
+    assert answer_for(title, "no marks", "Samsung Galaxy S23 in Cream. No scratches.") == []
+
+
+def test_your_own_excellent_or_like_new_with_a_mark_passes():
+    text = "Excellent condition, light scratch on the back."
+    assert answer_for("iPhone 14 128GB Midnight unlocked", "excellent condition, light scratch on the back",
+                      f"Apple iPhone 14 128GB in Midnight, unlocked. {text}", condition_note=text) == []
+    assert answer_for("PS5 Slim disc 1TB white", "like new, tiny scuff on the side",
+                      "PlayStation 5 Slim Disc Edition 1TB in White.", condition_note="Like new, tiny scuff on the side.") == []
+
+
+def test_the_processor_chip_is_not_damage():
+    assert answer_for("iPhone 13 128GB Blue unlocked", "", "Apple iPhone 13 128GB in Blue, unlocked. A15 Bionic chip.") == []
+
+
+def test_a_no_after_a_list_covers_the_whole_list():
+    assert promises_in("box and charger not included") == {"box": {"no"}, "charger": {"no"}}
+
+
+def test_no_controller_drift_is_not_about_the_controller():
+    assert promises_in("no controller drift") == {"working": {"yes"}}
+
+
+def test_battery_figures_without_a_percent_sign():
+    title = "iPhone 13 128GB Blue unlocked"
+    assert answer_for(title, "battery health 86", "Apple iPhone 13 128GB in Blue, unlocked. Battery health 86%.") == []
+    assert "description has a percentage your notes don't: 95%" in \
+        answer_for(title, "battery 84%", "Apple iPhone 13 128GB in Blue, unlocked. Battery health 95.",
+                   seller="battery health 95%")
+
+
+def test_your_locked_or_out_of_warranty_beats_the_seller():
+    assert "description says things your inputs don't: unlocked" in \
+        answer_for("iPhone 13 128GB Blue", "locked to Vodafone", "Apple iPhone 13 128GB in Blue, unlocked to all networks.",
+                   seller="unlocked")
+    assert "description says things your inputs don't: warranty" in \
+        answer_for("AirPods Pro 2 USB-C", "out of warranty", "Apple AirPods Pro 2, still under Apple warranty.",
+                   seller="still has warranty")
+
+
+def test_invented_bundle_items_fail():
+    assert "description says things your inputs don't: cable, headset, stand" in \
+        answer_for("PS5 Slim disc 1TB white", "", "PlayStation 5 Slim Disc Edition 1TB in White, with vertical stand, HDMI and headset.")
 
 
 # ── messages ────────────────────────────────────────────────────────────────
