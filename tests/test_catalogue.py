@@ -26,13 +26,13 @@ def test_words_split_letters_from_numbers():
     ("iPhone 13 128GB Midnight Unlocked", "iphone-13"),
     ("IPHONE13 128gb", "iphone-13"),
     ("apple iphone-13 pro 256gb", "iphone-13-pro"),
-    ("iPhone 13 Pro Max 256GB", None),            # not in the catalogue: needs you
-    ("iPhone 13 promax 256gb", None),
-    ("iPhone 13pm", None),
-    ("iPhone 13 mini", None),
+    ("iPhone 13 Pro Max 256GB", "iphone-13-pro-max"),
+    ("iPhone 13 promax 256gb", "iphone-13-pro-max"),
+    ("iPhone 13pm", "iphone-13-pro-max"),
+    ("iPhone 13 mini", "iphone-13-mini"),
     ("PS5 Slim Disc 1TB", "ps5-slim"),            # longest name wins
     ("PS5 disc edition + 2 controllers", "ps5"),
-    ("Sony PlayStation 5 Pro", None),
+    ("Sony PlayStation 5 Pro", None),            # not in the catalogue: needs you
     ("Samsung Galaxy S23+ 256GB", None),          # the + means Plus
     ("Samsung Galaxy S23U", None),
     ("Samsung S23 8GB RAM 256GB", "galaxy-s23"),

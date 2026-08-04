@@ -131,8 +131,8 @@ def mentioned(text_words, phrase, not_followed_by=(), skipping=(), not_after=())
 
 def rules_out(text_words, not_if):
     """True if a word that means a different model appears: "pro" rules out the
-    iPhone 13. Not "plus" meaning "and" ("plus a charger"), and not "max" in
-    "battery max capacity"."""
+    iPhone 13. Not "plus" meaning "and" ("plus a charger"), not "max" in
+    "battery max capacity", not "pm" in "after 5pm"."""
     for i, word in enumerate(text_words):
         if word not in not_if:
             continue
@@ -142,6 +142,8 @@ def rules_out(text_words, not_if):
             continue
         if word == "max" and (after == "capacity" or before in ("battery", "health")):
             continue
+        if word == "pm" and before.isdigit():
+            continue  # "collect after 5pm" isn't a Pro Max
         return True
     return False
 
