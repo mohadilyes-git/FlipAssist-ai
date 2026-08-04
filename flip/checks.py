@@ -148,19 +148,45 @@ NUMBER_WORDS = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7
                 "hundred": 100}
 
 AMOUNT = r"(\d[\d,]*(?:\.\d{2})?)"
+# a number that counts something isn't a price: "do 2 CONTROLLERS come with it", "take 2 MORE photos"
+COUNTED = (r"(?!\s?(?:gb|tb|%|x\b|more\b|controllers?|pads?|games?|photos?|pics?|pictures?|items?|days?|weeks?|"
+           r"months?|years?|hours?|mins?|minutes?|of\b))")
+# words that put a price on the table: "take 170", "stretch to 200", "let it go for 170", "£170, or 200"
+OFFER_WORDS = (r"let it go for|go for|stretch to|stretch|go up to|go to|up to|settle for|settle on|meet you at|"
+               r"meet at|accept|consider|take|do|offer|pay|or|max")
 PRICES = [re.compile(r"£\s?" + AMOUNT),
           re.compile(AMOUNT + r"\s?(?:quid|pounds|gbp)\b", re.IGNORECASE),
-          re.compile(r"\b(?:take|do|offer|pay|go to|up to)\s+" + AMOUNT + r"\b(?!\s?(?:gb|tb|%))", re.IGNORECASE)]
-# the asking price may be mentioned, but only like this: "I know it's listed at £200"
-ASKING_MENTION = re.compile(r"\b(?:asking|listed at|listed for|instead of)\s+£?\s?" + AMOUNT, re.IGNORECASE)
+          re.compile(r"\b(?:" + OFFER_WORDS + r")\s+" + AMOUNT + r"\b" + COUNTED, re.IGNORECASE),
+          re.compile(r"£\s?\d[\d,]*(?:\.\d{2})?\s?(?:-|–|to)\s?£?\s?" + AMOUNT + r"\b" + COUNTED, re.IGNORECASE)]
+# the asking price may come up, but only as a reference: "I know it's listed at £200",
+# "the asking price is £200", "I see it's £200 ono". "Happy to pay the asking £200" is an offer
+ASKING_MENTION = re.compile(
+    r"\b(?:listed (?:at|for)|asking price (?:is|of)|you(?:'re| are) asking)\s+£?\s?(?P<a>\d[\d,]*(?:\.\d{2})?)"
+    r"|\b(?:it'?s|it is|price is|priced at)\s+£\s?(?P<b>\d[\d,]*(?:\.\d{2})?)"
+    r"|£\s?(?P<c>\d[\d,]*(?:\.\d{2})?)\s+(?:on the listing|ono|or nearest offer)\b", re.IGNORECASE)
+# ...unless one of these comes just before it: "I'd PAY the asking price of £200"
+OFFER_VERBS = {"pay", "paying", "offer", "offering", "give", "do", "take", "go", "accept", "happy", "could", "would",
+               "can", "will", "i'd", "id"}
+# a price in a listing, in words: "Paid 300 at Currys", "RRP 349", "was GBP 120"
+LISTING_PRICE = re.compile(r"\b(?:paid|rrp|retail|retails|retailed|cost|costs|bought (?:it )?for|worth|valued at|was)"
+                           r"\s+(?:at\s+)?(?:£|gbp\s?)?\s?\d[\d,]*(?:\.\d{2})?\b" + COUNTED + r"|\bgbp\s?\d", re.IGNORECASE)
+# paying or dealing outside the platform: no buyer protection, and against eBay's rules
+OFF_PLATFORM = re.compile(r"\b(?:outside (?:of )?ebay|off ebay|end (?:the |your )?listing|friends (?:and|&) family|"
+                          r"f ?& ?f|bank transfer|direct transfer|pay(?:ment)? by transfer|revolut|monzo|crypto|"
+                          r"bitcoin|western union|gift cards?)\b", re.IGNORECASE)
 
-LINK = re.compile(r"https?://|www\.|\b[\w-]+\.(?:com|co\.uk|uk|net|org|io)\b", re.IGNORECASE)
+LINK = re.compile(r"https?://|www\.|\b[\w-]+\.(?:com|co\.uk|uk|net|org|io)\b"
+                  r"|\b[\w-]+\.(?:ly|gl|me|link|to|app|page|co)/\S*", re.IGNORECASE)  # short links: "bit.ly/..."
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.\w+")
 HANDLE = re.compile(r"(?<![\w.])@\w{3,}")
-CONTACT_WORDS = re.compile(r"\b(?:whats ?app|instagram|insta|snapchat|telegram|gmail|hotmail|outlook|yahoo)\b"
-                           r"|\bdot (?:com|co|uk|net)\b"
-                           r"|\b(?:snap|sc|ig|fb|tiktok|discord|kik)\s*(?::|@|me\b)"  # "Snap: name"
-                           r"|\bon (?:snap|ig|fb|tiktok|discord|kik)\b", re.IGNORECASE)  # "find me on IG"
+CONTACT_WORDS = re.compile(
+    r"\b(?:whats ?app|snapchat|telegram|gmail|hotmail|outlook|yahoo)\b"
+    r"|\bdot (?:com|co|uk|net)\b"
+    r"|\b(?:snap|sc|ig|fb|wa|tiktok|discord|kik)\s*(?::|@|me\b)"  # "Snap: name", "WA me"
+    r"|\bmy (?:snap(?:chat)?|sc|ig|insta(?:gram)?|fb|facebook|tiktok|discord|kik|number|mobile|email)\b"  # "my snap is"
+    r"|\b(?:message|msg|text|dm|add|contact|find|reach|follow|hit)\s+(?:me\s+)?(?:up\s+)?(?:on|via|at)\s+"  # "add me on"
+    r"(?:snap(?:chat)?|ig|insta(?:gram)?|fb|facebook|messenger|tiktok|discord|kik|whats ?app|telegram|signal)\b",
+    re.IGNORECASE)
 # checked with the spaces, dashes and brackets between digits removed
 PHONE = re.compile(r"(?:\+|00)44\d{9,11}|\b0[1-37]\d{8,9}\b")  # UK mobiles and landlines
 LONG_NUMBER = re.compile(r"\b\d{10,}\b")  # 10+ digits in a row: a phone number or an IMEI
@@ -449,9 +475,18 @@ def check_matches_item(what, text, item, catalogue, colour, sources=""):
 
 
 def check_no_prices(what, text):
-    """A listing never states a price: not what you paid, not the seller's asking price."""
-    if any(pattern.search(text) for pattern in PRICES[:2]):
+    """A listing never states a price: not what you paid, not the seller's
+    asking price, not the RRP."""
+    if any(pattern.search(text) for pattern in (*PRICES[:2], LISTING_PRICE)):
         return [f"{what} mentions a price"]
+    return []
+
+
+def check_no_off_platform(what, text):
+    """Nothing about paying or dealing outside the platform: bank transfer,
+    PayPal friends and family, "outside eBay", ending the listing early."""
+    if OFF_PLATFORM.search(text):
+        return [f"{what} suggests paying or dealing outside the platform"]
     return []
 
 
@@ -513,6 +548,7 @@ def check_listing_answer(answer, item, catalogue, conditions, sources, notes):
             problems += check_no_invented_promises(what, text, sources, notes or "")
             problems += check_matches_item(what, text, item, catalogue, colour, sources)
             problems += check_no_prices(what, text)
+            problems += check_no_off_platform(what, text)
             problems += check_no_contact_details(what, text)
     return problems
 
@@ -528,20 +564,30 @@ def pence_or_none(amount):
 def check_message(message, offer, sources, asking=None):
     """Every check on a drafted message to a seller. offer and asking are in pence.
 
-    The only price it may state is the offer. The asking price may come up
-    only as "listed at £200", and that's taken out before the prices are read,
-    so a second "£200" can't hide behind it. No claim check: a message asks
-    things ("does it come with the box?").
+    The only price it may state is the offer. The asking price may come up as
+    a reference ("it's listed at £200", "the asking price is £200"); that's
+    taken out before the prices are read, so a second "£200" can't hide behind
+    it, and the asking price can't come back as a bare "200". No claim check:
+    a message asks things ("does it come with the box?").
     """
     problems = check_length("message", message, MAX_MESSAGE)
     if problems:
         return problems
+    message = re.sub(r"[’‘ʼ]", "'", message)
     rest = message
-    if asking is not None and all(pence_or_none(amount) == asking for amount in ASKING_MENTION.findall(message)):
-        rest = ASKING_MENTION.sub(" ", message)
+    if asking is not None:
+        # an offer verb counts only in the same sentence: "Would you take £170? It's £200 on the listing"
+        refs = [m for m in ASKING_MENTION.finditer(message)
+                if not set(re.split(r"[.?!]", message[:m.start()])[-1].lower().split()[-3:]) & OFFER_VERBS]
+        if refs and all(pence_or_none(m.group("a") or m.group("b") or m.group("c")) == asking for m in refs):
+            for m in reversed(refs):
+                rest = rest[:m.start()] + " " + rest[m.end():]
     prices = {pence_or_none(amount) for pattern in PRICES for amount in pattern.findall(rest)}
     if prices != {offer}:
         problems.append(f"the message must offer exactly {pounds(offer)} and no other price")
+    elif asking is not None and asking != offer and f"{(Decimal(asking) / 100).normalize():f}" in numbers_in(rest):
+        problems.append("the message mentions the asking price again, as if offering it")
     problems += check_no_invented_numbers("message", message, f"{sources} {pounds(offer)}")
+    problems += check_no_off_platform("message", message)
     problems += check_no_contact_details("message", message)
     return problems

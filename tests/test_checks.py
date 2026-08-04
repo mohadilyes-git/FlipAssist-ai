@@ -449,3 +449,66 @@ def test_the_asking_price_cant_hide_a_second_offer():
 def test_a_silly_amount_in_a_message_fails_instead_of_crashing():
     assert "the message must offer exactly £170.00 and no other price" in \
         check_message("Would you take £" + "9" * 40 + "?", 17000, LISTING)
+
+
+# ── found by the attack agents: messages and leaks ─────────────────────────
+
+@pytest.mark.parametrize("message", [
+    "Would you take £170? I can pay by bank transfer straight away.",
+    "Would you take £170 if I pay through PayPal friends and family?",
+    "Would you take £170? Happy to do it outside eBay if you end the listing.",
+])
+def test_paying_off_the_platform_fails(message):
+    assert "message suggests paying or dealing outside the platform" in \
+        check_message(message, 17000, LISTING, asking=20000)
+
+
+@pytest.mark.parametrize("message", [
+    "Would you take £170? My snap is example_seller",
+    "Would you take £170? my ig is example.seller",
+    "Would you take £170? Message me on Facebook",
+    "Would you take £170? Add me on Messenger",
+    "Would you take £170? details at bit.ly/example",
+    "Would you take £170? WA me",
+])
+def test_moving_the_chat_elsewhere_fails(message):
+    assert "message contains a link, email, phone number, handle or long ID number" in \
+        check_message(message, 17000, LISTING, asking=20000)
+
+
+@pytest.mark.parametrize("message", [
+    "Would you take £170? If not, happy to pay the asking £200.",
+    "Would you take £170? I could stretch to 200 if you can post it.",
+    "Would you consider £170-200?",
+    "£170, or 200 if you deliver?",
+])
+def test_a_second_offer_in_other_words_fails(message):
+    assert "the message must offer exactly £170.00 and no other price" in \
+        check_message(message, 17000, LISTING, asking=20000)
+
+
+@pytest.mark.parametrize("message", [
+    "Hi, I know the asking price is £200, but would you take £170?",
+    "Hi, I see it's £200 ono - would you take £170?",
+    "Would you take £170? It's £200 on the listing so hope that's fair.",
+    "Hi, do 2 controllers come with it? Would you take £170?",
+    "Would you take £170? Could you take 2 more photos of the console?",
+    "Would you let it go for 170?",
+    "Would you accept 170?",
+    "Hi, saw these on Facebook - would you take £170?",
+    "Hi, saw your PS5 on FB - would you take £170?",
+])
+def test_normal_polite_messages_pass(message):
+    assert check_message(message, 17000, LISTING, asking=20000) == []
+
+
+@pytest.mark.parametrize("text", ["Paid 300 at Currys.", "RRP 349.", "Was GBP 120."])
+def test_a_listing_never_mentions_what_was_paid(text):
+    assert "description mentions a price" in problems(description=f"Apple iPhone 13 128GB, unlocked. {text}")
+
+
+def test_a_listing_never_suggests_paying_or_talking_elsewhere():
+    assert "description suggests paying or dealing outside the platform" in \
+        problems(description="Apple iPhone 13 128GB, unlocked. Payment by bank transfer or PayPal friends and family.")
+    assert "description contains a link, email, phone number, handle or long ID number" in \
+        problems(description="Apple iPhone 13 128GB, unlocked. Message me on Facebook for more photos.")
